@@ -1,6 +1,9 @@
 import 'dotenv/config';
-import { Client, Events, GatewayIntentBits, TextChannel, SlashCommandBuilder, REST, Routes, ChatInputCommandInteraction } from 'discord.js';
+import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
 import { connectDatabase } from './database';
+import * as register from './commands/register';
+import * as listUsers from './commands/listUsers';
+import { ensureRoles } from './utils/ensureRoles';
 
 const client = new Client({
     intents: [
@@ -10,13 +13,9 @@ const client = new Client({
     ],
 });
 
-const channelId = '1479181177469534220';
-
 const commands = [
-    new SlashCommandBuilder()
-        .setName('test2')
-        .setDescription('A test command')
-        .toJSON(),
+    register.command.toJSON(),
+    listUsers.command.toJSON(),
 ];
 
 client.on(Events.ClientReady, async () => {
@@ -26,25 +25,22 @@ client.on(Events.ClientReady, async () => {
     await rest.put(Routes.applicationCommands(client.user!.id), { body: commands });
     console.log('Slash commands registered.');
 
-    const channel = await client.channels.fetch(channelId);
-
-    if (!channel || !channel.isTextBased()) {
-        console.error('Channel not found or is not text-based');
-        return;
-    }
-
-    if (channel instanceof TextChannel) {
-
-        // await channel.send('Hello, world!');
+    for (const guild of client.guilds.cache.values()) {
+        await ensureRoles(guild);
     }
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-    console.log(`Received interaction: ${interaction.type} - ${interaction.id}`);
-    if (!interaction.isChatInputCommand()) return;
-
-    if (interaction.commandName === 'test2') {
-        await (interaction as ChatInputCommandInteraction).reply('test command executed');
+    if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === 'register') {
+            await register.handleCommand(interaction);
+        } else if (interaction.commandName === 'list-users') {
+            await listUsers.handleCommand(interaction);
+        }
+    } else if (interaction.isModalSubmit()) {
+        if (interaction.customId === 'register-modal') {
+            await register.handleModalSubmit(interaction);
+        }
     }
 });
 
