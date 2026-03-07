@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits } from 'discord.js';
+import { User } from '../models/User';
 
 export const command = new SlashCommandBuilder()
     .setName('make-admin')
@@ -34,5 +35,6 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     }
 
     await member.roles.add(adminRole);
+    await User.updateOne({ discordId: target.id }, { $addToSet: { roles: 'admin' } });
     await interaction.editReply(`Le rôle **ADMIN** a été attribué à <@${target.id}>.`);
 }
