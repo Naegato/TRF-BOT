@@ -3,6 +3,9 @@ import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
 import { connectDatabase } from './database';
 import * as register from './commands/register';
 import * as listUsers from './commands/listUsers';
+import * as deleteUser from './commands/deleteUser';
+import * as makeAdmin from './commands/makeAdmin';
+import * as adminRegister from './commands/adminRegister';
 import { ensureRoles } from './utils/ensureRoles';
 
 const client = new Client({
@@ -16,6 +19,9 @@ const client = new Client({
 const commands = [
     register.command.toJSON(),
     listUsers.command.toJSON(),
+    deleteUser.command.toJSON(),
+    makeAdmin.command.toJSON(),
+    adminRegister.command.toJSON(),
 ];
 
 client.on(Events.ClientReady, async () => {
@@ -37,6 +43,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await register.handleCommand(interaction);
             } else if (interaction.commandName === 'list-users') {
                 await listUsers.handleCommand(interaction);
+            } else if (interaction.commandName === 'delete-user') {
+                await deleteUser.handleCommand(interaction);
+            } else if (interaction.commandName === 'make-admin') {
+                await makeAdmin.handleCommand(interaction);
+            } else if (interaction.commandName === 'admin-register') {
+                await adminRegister.handleCommand(interaction);
             }
         } else if (interaction.isModalSubmit()) {
             if (interaction.customId === 'register-modal') {
