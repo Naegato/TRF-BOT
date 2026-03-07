@@ -31,16 +31,20 @@ client.on(Events.ClientReady, async () => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-    if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === 'register') {
-            await register.handleCommand(interaction);
-        } else if (interaction.commandName === 'list-users') {
-            await listUsers.handleCommand(interaction);
+    try {
+        if (interaction.isChatInputCommand()) {
+            if (interaction.commandName === 'register') {
+                await register.handleCommand(interaction);
+            } else if (interaction.commandName === 'list-users') {
+                await listUsers.handleCommand(interaction);
+            }
+        } else if (interaction.isModalSubmit()) {
+            if (interaction.customId === 'register-modal') {
+                await register.handleModalSubmit(interaction);
+            }
         }
-    } else if (interaction.isModalSubmit()) {
-        if (interaction.customId === 'register-modal') {
-            await register.handleModalSubmit(interaction);
-        }
+    } catch (err) {
+        console.error('InteractionCreate error:', err);
     }
 });
 

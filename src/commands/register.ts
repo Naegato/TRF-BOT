@@ -76,7 +76,12 @@ export async function handleModalSubmit(interaction: ModalSubmitInteraction) {
     const member = await guild.members.fetch(interaction.user.id);
 
     const nickname = `${prenom.toUpperCase()} ${nom.toUpperCase()} [${classe.toUpperCase()}]`;
-    await member.setNickname(nickname);
+    let nicknameChanged = true;
+    try {
+        await member.setNickname(nickname);
+    } catch {
+        nicknameChanged = false;
+    }
 
     const esgiRole = guild.roles.cache.find(r => r.name === 'ESGI');
     if (esgiRole) await member.roles.add(esgiRole);
@@ -89,5 +94,6 @@ export async function handleModalSubmit(interaction: ModalSubmitInteraction) {
 
     await User.create({ discordId: interaction.user.id, nom, prenom, classe, email });
 
-    await interaction.editReply(`Inscription réussie ! Vous êtes enregistré sous le nom **${nickname}**.`);
+    const nicknameNote = nicknameChanged ? '' : '\n⚠️ Votre surnom n\'a pas pu être modifié (propriétaire du serveur).';
+    await interaction.editReply(`Inscription réussie ! Vous êtes enregistré sous le nom **${nickname}**.${nicknameNote}`);
 }
