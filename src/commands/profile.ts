@@ -6,9 +6,11 @@ export const command = new SlashCommandBuilder()
     .setDescription('Voir votre profil enregistré');
 
 const ROLE_LABELS: Record<string, string> = {
-    admin:   '🔴 Admin',
-    esgi:    '🔵 ESGI',
-    externe: '🟢 Externe',
+    admin:       '🔴 Admin',
+    esgi:        '🔵 ESGI',
+    externe:     '🟢 Externe',
+    adjoint:     '🟠 Adjoint',
+    responsable: '🟣 Responsable',
 };
 
 const ROLE_COLORS: Record<string, number> = {
@@ -50,11 +52,15 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         .setThumbnail(avatarUrl)
         .setTitle(`${user.prenom.toUpperCase()} ${user.nom.toUpperCase()}`)
         .addFields(
-            { name: '📧 Email',        value: user.email,              inline: true  },
-            { name: '🎓 Classe',       value: user.classe.toUpperCase(), inline: true },
-            { name: '\u200b',          value: '\u200b',                inline: false },
-            { name: '🏷️ Rôles',        value: roleDisplay,             inline: true  },
-            { name: '📅 Inscrit le',   value: registeredAt,            inline: true  },
+            { name: '📧 Email',        value: user.email,                      inline: true  },
+            { name: '🎓 Classe',       value: user.classe.toUpperCase(),       inline: true  },
+            { name: '\u200b',          value: '\u200b',                        inline: false },
+            { name: '🏷️ Rôles',        value: roleDisplay,                     inline: true  },
+            { name: '📅 Inscrit le',   value: registeredAt,                    inline: true  },
+            { name: '\u200b',          value: '\u200b',                        inline: false },
+            { name: '📚 Filière',      value: (user as { filiere?: string }).filiere || '—', inline: true },
+            { name: '📆 Rentrée',      value: (user as { rentree?: string }).rentree || '—', inline: true },
+            { name: '💼 Statut',       value: (user as { statut?: string }).statut || '—',   inline: true },
         )
         .setFooter({ text: `ID Discord : ${interaction.user.id}` });
 

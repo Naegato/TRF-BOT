@@ -9,7 +9,10 @@ import * as adminRegister from './commands/adminRegister';
 import * as profile from './commands/profile';
 import * as points from './commands/points';
 import * as pointsHistory from './commands/pointsHistory';
+import * as assignRole from './commands/assignRole';
+import * as synthese from './commands/synthese';
 import { ensureRoles } from './utils/ensureRoles';
+import { startAutoAwardCron } from './jobs/autoAwardPoints';
 import { ensureChannels } from './utils/ensureChannels';
 import { handleProofMessage, handleProofReaction } from './utils/handleProofChannel';
 
@@ -33,6 +36,8 @@ const commands = [
     profile.command.toJSON(),
     points.command.toJSON(),
     pointsHistory.command.toJSON(),
+    assignRole.command.toJSON(),
+    synthese.command.toJSON(),
 ];
 
 client.on(Events.ClientReady, async () => {
@@ -46,6 +51,8 @@ client.on(Events.ClientReady, async () => {
         await ensureRoles(guild);
         await ensureChannels(guild);
     }
+
+    startAutoAwardCron(client);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -67,6 +74,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await points.handleCommand(interaction);
             } else if (interaction.commandName === 'points-history') {
                 await pointsHistory.handleCommand(interaction);
+            } else if (interaction.commandName === 'assign-role') {
+                await assignRole.handleCommand(interaction);
+            } else if (interaction.commandName === 'synthese') {
+                await synthese.handleCommand(interaction);
             }
         } else if (interaction.isButton()) {
             if (interaction.customId === 'register-type-esgi' || interaction.customId === 'register-type-externe') {

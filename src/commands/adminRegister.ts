@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits } from 'discord.js';
 import { User } from '../models/User';
+import { validateClasse } from '../utils/validateClasse';
 
 export const command = new SlashCommandBuilder()
     .setName('admin-register')
@@ -33,7 +34,25 @@ export const command = new SlashCommandBuilder()
     .addBooleanOption(option =>
         option.setName('externe')
             .setDescription('Cocher si l\'utilisateur est externe (pas de classe requise)')
+            .setRequired(false),
+    )
+    .addStringOption(option =>
+        option.setName('statut')
+            .setDescription('Statut de l\'étudiant (défaut: initial)')
             .setRequired(false)
+            .addChoices(
+                { name: 'Initial', value: 'initial' },
+                { name: 'Alternance', value: 'alternance' },
+            ),
+    )
+    .addStringOption(option =>
+        option.setName('rentree')
+            .setDescription('Rentrée de l\'étudiant (défaut: octobre)')
+            .setRequired(false)
+            .addChoices(
+                { name: 'Octobre', value: 'octobre' },
+                { name: 'Janvier', value: 'janvier' },
+            ),
     );
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
@@ -43,17 +62,27 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const prenom = interaction.options.getString('prenom', true).trim();
     const nom = interaction.options.getString('nom', true).trim();
     const email = interaction.options.getString('email', true).trim();
-    const isExterne = interaction.options.getBoolean('externe') ?? false;
-    const classeRaw = interaction.options.getString('classe');
+    const isExterne  = interaction.options.getBoolean('externe') ?? false;
+    const classeRaw  = interaction.options.getString('classe');
+    const statutRaw  = (interaction.options.getString('statut') ?? 'initial') as 'initial' | 'alternance';
+    const rentreeRaw = (interaction.options.getString('rentree') ?? 'octobre') as 'octobre' | 'janvier';
 
     if (!isExterne && !classeRaw) {
         await interaction.editReply('Le champ **classe** est requis pour un étudiant ESGI.');
         return;
     }
 
-    const classe = isExterne
-        ? (process.env.EXTERNAL_CLASS?.toUpperCase() ?? 'EXTERNE')
-        : classeRaw!.trim();
+    const classe  = isExterne ? (process.env.EXTERNAL_CLASS?.toUpperCase() ?? 'EXTERNE') : classeRaw!.trim().toUpperCase();
+    let filiere = '';
+
+    if (!isExterne) {
+        const classeResult = validateClasse(classe);
+        if (!classeResult.valid) {
+            await interaction.editReply(classeResult.helpMessage);
+            return;
+        }
+        filiere = classeResult.filiere;
+    }
 
     const existing = await User.findOne({ discordId: target.id });
     if (existing) {
@@ -84,7 +113,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         if (esgiRole) await member.roles.add(esgiRole);
     }
 
-    await User.create({ discordId: target.id, nom, prenom, classe, email, roles: [isExterne ? 'externe' : 'esgi'] });
+    await User.create({
+        discordId: target.id,
+        nom, prenom, classe, email,
+        filiere, rentree: rentreeRaw, statut: statutRaw,
+        roles: [isExterne ? 'externe' : 'esgi'],
+    });
 
     await interaction.editReply(`<@${target.id}> a été inscrit sous le nom **${nickname}**.`);
 }

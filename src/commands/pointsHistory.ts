@@ -31,7 +31,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     const lines = entries.map((e, i) => {
         const ts = `<t:${Math.floor(new Date(e.createdAt).getTime() / 1000)}:d>`;
-        return `\`${String(i + 1).padStart(2, '0')}.\` **+${e.amount.toFixed(2)} pt** — ${ts} — validé par <@${e.grantedBy}>`;
+        const entryType = (e as { type?: string }).type;
+        const renderId  = (e as { renderId?: string }).renderId;
+        const label = entryType === 'auto'
+            ? `Auto-attribué — rendu ${renderId ?? '?'}`
+            : `validé par <@${e.grantedBy}>`;
+        return `\`${String(i + 1).padStart(2, '0')}.\` **+${e.amount.toFixed(2)} pt** — ${ts} — ${label}`;
     });
 
     // Split into chunks of 10 entries per embed

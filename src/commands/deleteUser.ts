@@ -26,7 +26,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const member = await guild.members.fetch(target.id).catch(() => null);
 
     if (member) {
-        const roleNames = ['ADMIN', 'ESGI', 'EXTERNE'];
+        const roleNames = ['ADMIN', 'ESGI', 'EXTERNE', 'ADJOINT', 'RESPONSABLE'];
         const rolesToRemove = guild.roles.cache.filter(r => roleNames.includes(r.name));
         await member.roles.remove(rolesToRemove).catch(() => null);
         await member.setNickname(null).catch(() => null);

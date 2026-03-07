@@ -11,6 +11,7 @@ import {
     ButtonInteraction,
 } from 'discord.js';
 import { User } from '../models/User';
+import { validateClasse } from '../utils/validateClasse';
 
 export const command = new SlashCommandBuilder()
     .setName('register')
@@ -80,11 +81,19 @@ export async function handleButtonInteraction(interaction: ButtonInteraction) {
             .setStyle(TextInputStyle.Short)
             .setRequired(true);
 
+        const statutRentreeInput = new TextInputBuilder()
+            .setCustomId('statut-rentree')
+            .setLabel('Statut & Rentrée')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('initial-octobre / alternance-janvier / initial-janvier')
+            .setRequired(true);
+
         modal.addComponents(
             new ActionRowBuilder<TextInputBuilder>().addComponents(prenomInput),
             new ActionRowBuilder<TextInputBuilder>().addComponents(nomInput),
             new ActionRowBuilder<TextInputBuilder>().addComponents(classeInput),
             new ActionRowBuilder<TextInputBuilder>().addComponents(emailInput),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(statutRentreeInput),
         );
     }
 
@@ -106,7 +115,34 @@ export async function handleModalSubmit(interaction: ModalSubmitInteraction) {
     const email = interaction.fields.getTextInputValue('email').trim();
     const classe = isExterne
         ? (process.env.EXTERNAL_CLASS?.toUpperCase() ?? 'EXTERNE')
-        : interaction.fields.getTextInputValue('classe').trim();
+        : interaction.fields.getTextInputValue('classe').trim().toUpperCase();
+
+    let filiere = '';
+    let rentree: 'octobre' | 'janvier' = 'octobre';
+    let statut: 'initial' | 'alternance' = 'initial';
+
+    if (!isExterne) {
+        const classeResult = validateClasse(classe);
+        if (!classeResult.valid) {
+            await interaction.editReply(classeResult.helpMessage);
+            return;
+        }
+        filiere = classeResult.filiere;
+
+        const statutRentreeRaw = interaction.fields.getTextInputValue('statut-rentree').trim().toLowerCase();
+        const parts = statutRentreeRaw.split('-');
+        const statutRaw  = parts[0]?.trim() as 'initial' | 'alternance';
+        const rentreeRaw = parts[1]?.trim() as 'octobre' | 'janvier';
+
+        if (!['initial', 'alternance'].includes(statutRaw) || !['octobre', 'janvier'].includes(rentreeRaw)) {
+            await interaction.editReply(
+                '❌ Format Statut & Rentrée invalide.\nUtilisez : `initial-octobre`, `alternance-janvier`, ou `initial-janvier`.',
+            );
+            return;
+        }
+        statut  = statutRaw;
+        rentree = rentreeRaw;
+    }
 
     const guild = interaction.guild!;
     const member = await guild.members.fetch(interaction.user.id);
@@ -135,7 +171,12 @@ export async function handleModalSubmit(interaction: ModalSubmitInteraction) {
         if (esgiRole) await member.roles.add(esgiRole);
     }
 
-    await User.create({ discordId: interaction.user.id, nom, prenom, classe, email, roles: [isExterne ? 'externe' : 'esgi'] });
+    await User.create({
+        discordId: interaction.user.id,
+        nom, prenom, classe, email,
+        filiere, rentree, statut,
+        roles: [isExterne ? 'externe' : 'esgi'],
+    });
 
     const nicknameNote = nicknameChanged ? '' : '\n⚠️ Votre surnom n\'a pas pu être modifié (propriétaire du serveur).';
     await interaction.editReply(`Inscription réussie ! Vous êtes enregistré sous le nom **${nickname}**.${nicknameNote}`);
