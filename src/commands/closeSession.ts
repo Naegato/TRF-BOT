@@ -1,30 +1,29 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js';
-import { User } from '../models/User';
+import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
 import { Session } from '../models/Session';
 import { closeSessionNow } from '../utils/sessionScheduler';
+import { isAdminOrOwner } from '../utils/permissions';
 
 export const command = new SlashCommandBuilder()
     .setName('close-session')
-    .setDescription('Close the current attendance session (managers and deputies only)');
+    .setDescription('Fermer la séance de présence en cours (gérants et adjoints uniquement)');
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    const caller = await User.findOne({ discordId: interaction.user.id });
-    if (!caller || (caller.role !== 'manager' && caller.role !== 'deputy')) {
-        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+    if (!await isAdminOrOwner(interaction)) {
+        await interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", flags: MessageFlags.Ephemeral });
         return;
     }
 
     const session = await Session.findOne({
-        guildId: interaction.guildId!,
+        guildId:  interaction.guildId!,
         openedAt: { $exists: true },
         closedAt: { $exists: false },
     });
     if (!session) {
-        await interaction.reply({ content: 'No session is currently open.', ephemeral: true });
+        await interaction.reply({ content: 'Aucune séance en cours.', flags: MessageFlags.Ephemeral });
         return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await closeSessionNow(interaction.client, session);
-    await interaction.editReply('Session closed.');
+    await interaction.editReply('Séance fermée.');
 }

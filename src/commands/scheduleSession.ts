@@ -1,14 +1,12 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js';
-import { User } from '../models/User';
+import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
 import { Session } from '../models/Session';
 import { scheduleSessionTimers } from '../utils/sessionScheduler';
+import { isAdminOrOwner } from '../utils/permissions';
 
-// Parses "YYYY-MM-DD" + "HH:MM" as Europe/Paris local time
 function parseParisDateTime(dateStr: string, timeStr: string): Date | null {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
     if (!/^\d{2}:\d{2}$/.test(timeStr)) return null;
 
-    // Build a UTC date then adjust for the Paris offset at that moment
     const utcDate = new Date(`${dateStr}T${timeStr}:00Z`);
     if (isNaN(utcDate.getTime())) return null;
 
@@ -26,31 +24,22 @@ function parseParisDateTime(dateStr: string, timeStr: string): Date | null {
         `${p.year}-${p.month}-${p.day}T${p.hour === '24' ? '00' : p.hour}:${p.minute}:${p.second}Z`,
     );
 
-    // offset = difference between how Paris reads the UTC date vs the raw input
-    const offsetMs = parisAsUtc.getTime() - utcDate.getTime();
-    return new Date(utcDate.getTime() - offsetMs);
+    return new Date(utcDate.getTime() - (parisAsUtc.getTime() - utcDate.getTime()));
 }
 
 export const command = new SlashCommandBuilder()
     .setName('schedule-session')
-    .setDescription('Schedule an attendance session (managers and deputies only)')
+    .setDescription('Planifier une séance de présence (gérants et adjoints uniquement)')
     .addStringOption(opt =>
-        opt.setName('date')
-            .setDescription('Date in YYYY-MM-DD format (e.g. 2026-03-16)')
-            .setRequired(true))
+        opt.setName('date').setDescription('Date au format JJJJ-MM-DD (ex: 2026-03-16)').setRequired(true))
     .addStringOption(opt =>
-        opt.setName('start')
-            .setDescription('Start time in HH:MM format (e.g. 14:00) — Paris time')
-            .setRequired(true))
+        opt.setName('start').setDescription('Heure de début HH:MM (ex: 14:00) — heure de Paris').setRequired(true))
     .addStringOption(opt =>
-        opt.setName('end')
-            .setDescription('End time in HH:MM format (e.g. 16:00) — Paris time')
-            .setRequired(true));
+        opt.setName('end').setDescription('Heure de fin HH:MM (ex: 16:00) — heure de Paris').setRequired(true));
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    const caller = await User.findOne({ discordId: interaction.user.id });
-    if (!caller || (caller.role !== 'manager' && caller.role !== 'deputy')) {
-        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+    if (!await isAdminOrOwner(interaction)) {
+        await interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -62,17 +51,17 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const scheduledEnd   = parseParisDateTime(dateStr, endStr);
 
     if (!scheduledStart || !scheduledEnd) {
-        await interaction.reply({ content: 'Invalid date or time format. Use `YYYY-MM-DD` and `HH:MM`.', ephemeral: true });
+        await interaction.reply({ content: 'Format de date ou heure invalide. Utilisez `AAAA-MM-JJ` et `HH:MM`.', flags: MessageFlags.Ephemeral });
         return;
     }
 
     if (scheduledEnd <= scheduledStart) {
-        await interaction.reply({ content: 'End time must be after start time.', ephemeral: true });
+        await interaction.reply({ content: "L'heure de fin doit être après l'heure de début.", flags: MessageFlags.Ephemeral });
         return;
     }
 
     if (scheduledStart <= new Date()) {
-        await interaction.reply({ content: 'Start time must be in the future.', ephemeral: true });
+        await interaction.reply({ content: "L'heure de début doit être dans le futur.", flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -87,7 +76,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     const fmt = (d: Date) => d.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' });
     await interaction.reply({
-        content: `Session scheduled from **${fmt(scheduledStart)}** to **${fmt(scheduledEnd)}**.`,
-        ephemeral: true,
+        content: `Séance planifiée du **${fmt(scheduledStart)}** au **${fmt(scheduledEnd)}**.`,
+        flags: MessageFlags.Ephemeral,
     });
 }

@@ -1,24 +1,23 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder , MessageFlags } from 'discord.js';
 import { User } from '../models/User';
 import { Point } from '../models/Point';
 import { currentPeriodPoints } from '../utils/rendus';
 
 export const command = new SlashCommandBuilder()
     .setName('points')
-    .setDescription('View your points for the current period');
+    .setDescription('Voir vos points pour la période en cours');
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const user = await User.findOne({ discordId: interaction.user.id });
     if (!user) {
-        await interaction.reply({ content: 'You are not registered. Use `/register` first.', ephemeral: true });
+        await interaction.reply({ content: 'Vous devez vous inscrire avec `/register` en premier.', flags: MessageFlags.Ephemeral });
         return;
     }
 
     const period = await currentPeriodPoints(user, interaction.guildId!);
 
-    // Breakdown by type for the current period
     const dateFilter = period.since ? { $gt: period.since } : {};
-    const breakdown = await Point.aggregate([
+    const breakdown  = await Point.aggregate([
         { $match: { discordId: interaction.user.id, createdAt: dateFilter } },
         { $group: { _id: '$type', total: { $sum: '$amount' }, count: { $sum: 1 } } },
     ]);
@@ -31,20 +30,20 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     const sinceLabel = period.since
         ? `<t:${Math.floor(period.since.getTime() / 1000)}:D>`
-        : 'the beginning';
+        : 'le début';
 
     const embed = new EmbedBuilder()
         .setTitle(`Points — ${interaction.user.displayName}`)
         .setColor(0x5865f2)
-        .setDescription(`Period: since ${sinceLabel}`)
+        .setDescription(`Période : depuis ${sinceLabel}`)
         .addFields(
-            { name: '📸 Proof',    value: `${proofEntry.total} pt (${proofEntry.count} validated)`,      inline: true },
-            { name: '📋 Sessions', value: `${sessionEntry.total} pt (${sessionEntry.count} attendance)`, inline: true },
-            { name: '\u200b', value: '\u200b', inline: true },
-            { name: '📊 Raw total', value: `${period.raw} pt`,   inline: true },
-            { name: '🏆 Max',       value: `${period.max} pt`,   inline: true },
-            { name: '⭐ OPEN',      value: `**${period.capped} pt**`, inline: true },
+            { name: '📸 Preuves',  value: `${proofEntry.total} pt (${proofEntry.count} validée(s))`,      inline: true },
+            { name: '📋 Séances',  value: `${sessionEntry.total} pt (${sessionEntry.count} présence(s))`, inline: true },
+            { name: '\u200b',      value: '\u200b',                                                         inline: true },
+            { name: '📊 Total brut', value: `${period.raw} pt`,       inline: true },
+            { name: '🏆 Maximum',    value: `${period.max} pt`,       inline: true },
+            { name: '⭐ OPEN',       value: `**${period.capped} pt**`, inline: true },
         );
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }

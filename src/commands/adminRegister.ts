@@ -1,60 +1,54 @@
-import {
-    SlashCommandBuilder,
-    ChatInputCommandInteraction,
-} from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
 import { User } from '../models/User';
 import type { Role, Track, Intake } from '../models/User';
 import { buildNickname } from '../utils/nickname';
 import { applyRoles } from '../utils/applyRoles';
+import { isAdminOrOwner } from '../utils/permissions';
 
 export const command = new SlashCommandBuilder()
     .setName('admin-register')
-    .setDescription('Register a user manually (managers and deputies only)')
+    .setDescription('Enregistrer un utilisateur manuellement (gérants et adjoints uniquement)')
     .addUserOption(opt =>
-        opt.setName('user').setDescription('Discord user to register').setRequired(true))
+        opt.setName('user').setDescription('Utilisateur Discord à enregistrer').setRequired(true))
     .addStringOption(opt =>
-        opt.setName('firstname').setDescription('First name').setRequired(true))
+        opt.setName('firstname').setDescription('Prénom').setRequired(true))
     .addStringOption(opt =>
-        opt.setName('lastname').setDescription('Last name').setRequired(true))
+        opt.setName('lastname').setDescription('Nom').setRequired(true))
     .addStringOption(opt =>
         opt.setName('role')
-            .setDescription('Role')
+            .setDescription('Rôle')
             .setRequired(true)
             .addChoices(
-                { name: 'ESGI',     value: 'esgi' },
-                { name: 'External', value: 'external' },
-                { name: 'Manager',  value: 'manager' },
-                { name: 'Deputy',   value: 'deputy' },
+                { name: 'ESGI',    value: 'esgi' },
+                { name: 'Externe', value: 'external' },
+                { name: 'Gérant',  value: 'manager' },
+                { name: 'Adjoint', value: 'deputy' },
             ))
     .addIntegerOption(opt =>
         opt.setName('year')
-            .setDescription('Year (1–5) — required for non-external')
+            .setDescription('Année (1–5) — obligatoire si non externe')
             .addChoices(
-                { name: '1', value: 1 },
-                { name: '2', value: 2 },
-                { name: '3', value: 3 },
-                { name: '4', value: 4 },
-                { name: '5', value: 5 },
+                { name: '1', value: 1 }, { name: '2', value: 2 }, { name: '3', value: 3 },
+                { name: '4', value: 4 }, { name: '5', value: 5 },
             ))
     .addStringOption(opt =>
         opt.setName('track')
-            .setDescription('Track — required for non-external')
+            .setDescription('Filière — obligatoire si non externe')
             .addChoices(
-                { name: 'Alternating', value: 'alternating' },
-                { name: 'Initial',     value: 'initial' },
+                { name: 'Alternance', value: 'alternating' },
+                { name: 'Initial',    value: 'initial' },
             ))
     .addStringOption(opt =>
         opt.setName('intake')
-            .setDescription('Intake — required for non-external')
+            .setDescription('Rentrée — obligatoire si non externe')
             .addChoices(
-                { name: 'January',   value: 'january' },
-                { name: 'September', value: 'september' },
+                { name: 'Janvier',   value: 'january' },
+                { name: 'Septembre', value: 'september' },
             ));
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    const caller = await User.findOne({ discordId: interaction.user.id });
-    if (!caller || (caller.role !== 'manager' && caller.role !== 'deputy')) {
-        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+    if (!await isAdminOrOwner(interaction)) {
+        await interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -69,13 +63,13 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     if (role !== 'external') {
         const missing: string[] = [];
-        if (year === undefined) missing.push('year');
-        if (!track) missing.push('track');
-        if (!intake) missing.push('intake');
+        if (year === undefined) missing.push('année');
+        if (!track)             missing.push('filière');
+        if (!intake)            missing.push('rentrée');
         if (missing.length > 0) {
             await interaction.reply({
-                content: `Missing required fields for a non-external user: **${missing.join(', ')}**.`,
-                ephemeral: true,
+                content: `Champs obligatoires manquants pour un utilisateur non externe : **${missing.join(', ')}**.`,
+                flags: MessageFlags.Ephemeral,
             });
             return;
         }
@@ -83,18 +77,18 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     const existing = await User.findOne({ discordId: target.id });
     if (existing) {
-        await interaction.reply({ content: `<@${target.id}> is already registered.`, ephemeral: true });
+        await interaction.reply({ content: `<@${target.id}> est déjà inscrit(e).`, flags: MessageFlags.Ephemeral });
         return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const nickname = buildNickname(firstName, lastName, year, track, intake);
-    const member = await interaction.guild!.members.fetch(target.id);
-    const renamed = await member.setNickname(nickname).then(() => true).catch(() => false);
-    const user = await User.create({ discordId: target.id, firstName, lastName, role, year, track, intake });
+    const member   = await interaction.guild!.members.fetch(target.id);
+    const renamed  = await member.setNickname(nickname).then(() => true).catch(() => false);
+    const user     = await User.create({ discordId: target.id, firstName, lastName, role, year, track, intake });
     await applyRoles(member, user);
 
-    const note = renamed ? '' : `\n⚠️ Nickname could not be changed automatically. Please set it manually to: \`${nickname}\``;
-    await interaction.editReply(`<@${target.id}> has been registered as **${nickname}**.${note}`);
+    const note = renamed ? '' : `\n⚠️ Le surnom n'a pas pu être défini automatiquement. À définir manuellement : \`${nickname}\``;
+    await interaction.editReply(`<@${target.id}> a été inscrit(e) en tant que **${nickname}**.${note}`);
 }

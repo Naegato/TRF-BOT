@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder , MessageFlags } from 'discord.js';
 import { User } from '../models/User';
 import { Point } from '../models/Point';
 
@@ -6,16 +6,14 @@ const PAGE_SIZE = 10;
 
 export const command = new SlashCommandBuilder()
     .setName('points-history')
-    .setDescription('View your points history')
+    .setDescription('Voir votre historique de points')
     .addIntegerOption(opt =>
-        opt.setName('page')
-            .setDescription('Page number (default: 1)')
-            .setMinValue(1));
+        opt.setName('page').setDescription('Numéro de page (défaut : 1)').setMinValue(1));
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const user = await User.findOne({ discordId: interaction.user.id });
     if (!user) {
-        await interaction.reply({ content: 'You are not registered. Use `/register` first.', ephemeral: true });
+        await interaction.reply({ content: 'Vous devez vous inscrire avec `/register` en premier.', flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -24,7 +22,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
     if (page >= pages) {
-        await interaction.reply({ content: `Page ${page + 1} does not exist. Last page is ${pages}.`, ephemeral: true });
+        await interaction.reply({ content: `La page ${page + 1} n'existe pas. Dernière page : ${pages}.`, flags: MessageFlags.Ephemeral });
         return;
     }
 
@@ -37,14 +35,14 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         const icon      = e.type === 'proof' ? '📸' : '📋';
         const timestamp = `<t:${Math.floor(e.createdAt.getTime() / 1000)}:d>`;
         const grantedBy = `<@${e.grantedBy}>`;
-        return `${icon} **+${e.amount} pt** — ${timestamp} by ${grantedBy}`;
+        return `${icon} **+${e.amount} pt** — ${timestamp} par ${grantedBy}`;
     });
 
     const embed = new EmbedBuilder()
-        .setTitle(`Points history — ${interaction.user.displayName}`)
+        .setTitle(`Historique de points — ${interaction.user.displayName}`)
         .setColor(0x5865f2)
-        .setDescription(lines.length > 0 ? lines.join('\n') : 'No points yet.')
-        .setFooter({ text: `Page ${page + 1}/${pages} — ${total} total entries` });
+        .setDescription(lines.length > 0 ? lines.join('\n') : 'Aucun point pour le moment.')
+        .setFooter({ text: `Page ${page + 1}/${pages} — ${total} entrée(s) au total` });
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }

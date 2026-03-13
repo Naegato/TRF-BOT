@@ -61,25 +61,25 @@ export async function ensureChannels(guild: Guild): Promise<void> {
             },
         },
         {
-            // External users cannot send messages here
+            // Visible to registered users only — external cannot post
             name: CHANNEL_NAMES.proof,
             setup: async (ch) => {
-                if (externalRole) {
-                    await ch.permissionOverwrites.edit(externalRole, {
-                        SendMessages: false, UseApplicationCommands: false,
-                    });
-                }
+                await ch.permissionOverwrites.set([
+                    { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                    ...registeredRoles.map(r => ({ id: r!.id, allow: [PermissionFlagsBits.ViewChannel] })),
+                    ...(externalRole ? [{ id: externalRole.id, deny: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.UseApplicationCommands] }] : []),
+                ]);
             },
         },
         {
-            // External users cannot send messages here
+            // Visible to registered users only — external cannot post
             name: CHANNEL_NAMES.presence,
             setup: async (ch) => {
-                if (externalRole) {
-                    await ch.permissionOverwrites.edit(externalRole, {
-                        SendMessages: false, UseApplicationCommands: false,
-                    });
-                }
+                await ch.permissionOverwrites.set([
+                    { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                    ...registeredRoles.map(r => ({ id: r!.id, allow: [PermissionFlagsBits.ViewChannel] })),
+                    ...(externalRole ? [{ id: externalRole.id, deny: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.UseApplicationCommands] }] : []),
+                ]);
             },
         },
         {

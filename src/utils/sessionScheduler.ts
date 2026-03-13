@@ -18,7 +18,7 @@ export async function openSessionNow(client: Client, session: SessionDoc): Promi
     await session.save();
 
     const channel = await getPresenceChannel(client, session.guildId);
-    await channel?.send('📋 A session is now open! Use `/presence` to mark your attendance.');
+    await channel?.send('📋 Une séance est ouverte ! Utilisez `/presence` pour marquer votre présence.');
 }
 
 export async function closeSessionNow(client: Client, session: SessionDoc): Promise<void> {
@@ -27,7 +27,7 @@ export async function closeSessionNow(client: Client, session: SessionDoc): Prom
 
     const attendeeCount = await Point.countDocuments({ sessionId: session._id as string, type: 'session' });
     const channel = await getPresenceChannel(client, session.guildId);
-    await channel?.send(`🔒 The session is now closed. **${attendeeCount}** member(s) marked their attendance.`);
+    await channel?.send(`🔒 La séance est terminée. **${attendeeCount}** présence(s) enregistrée(s).`);
 }
 
 export function scheduleSessionTimers(client: Client, sessionId: string, openAt: Date, closeAt: Date): void {

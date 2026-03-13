@@ -59,7 +59,7 @@ export async function ensureRoles(guild: Guild): Promise<void> {
     for (const spec of ALL_SPECS) {
         const existing = guild.roles.cache.find(r => r.name === spec.name);
         if (!existing) {
-            await guild.roles.create({ name: spec.name, color: spec.color });
+            await guild.roles.create({ name: spec.name, colors: { primaryColor: spec.color } });
             console.log(`Created role "${spec.name}" in guild "${guild.name}".`);
         } else if (existing.color !== spec.color) {
             await existing.setColor(spec.color);

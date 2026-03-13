@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Client, ChatInputCommandInteraction, Events, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
+import { Client, ChatInputCommandInteraction, Events, GatewayIntentBits, MessageFlags, Partials, REST, Routes } from 'discord.js';
 import { connectDatabase } from './database';
 import { ensureRoles } from './utils/ensureRoles';
 import { ensureChannels, CHANNEL_NAMES } from './utils/ensureChannels';
@@ -16,6 +16,10 @@ import * as createRendu from './commands/createRendu';
 import * as profile from './commands/profile';
 import * as points from './commands/points';
 import * as pointsHistory from './commands/pointsHistory';
+import * as resetServer from './commands/resetServer';
+import * as deleteAccount from './commands/deleteAccount';
+import * as deleteUser from './commands/deleteUser';
+import * as listUsers from './commands/listUsers';
 
 // ─── Channel routing ─────────────────────────────────────────────────────────
 
@@ -27,13 +31,20 @@ const COMMAND_CHANNEL: Record<string, string> = {
     'close-session':    CHANNEL_NAMES.adminCommands,
     'schedule-session': CHANNEL_NAMES.adminCommands,
     'create-rendu':     CHANNEL_NAMES.adminCommands,
+    'reset-server':     CHANNEL_NAMES.adminCommands,
+    'delete-user':      CHANNEL_NAMES.adminCommands,
+    'list-users':       CHANNEL_NAMES.adminCommands,
     'profile':          CHANNEL_NAMES.botCommands,
     'points':           CHANNEL_NAMES.botCommands,
     'points-history':   CHANNEL_NAMES.botCommands,
     'presence':         CHANNEL_NAMES.botCommands,
+    'delete-account':   CHANNEL_NAMES.botCommands,
 };
 
 async function assertChannel(interaction: ChatInputCommandInteraction): Promise<boolean> {
+    // Guild owner bypasses channel restrictions
+    if (interaction.guild?.ownerId === interaction.user.id) return true;
+
     const required = COMMAND_CHANNEL[interaction.commandName];
     if (!required) return true;
 
@@ -42,7 +53,7 @@ async function assertChannel(interaction: ChatInputCommandInteraction): Promise<
 
     const target = interaction.guild?.channels.cache.find(c => c.name === required);
     const mention = target ? `<#${target.id}>` : `#${required}`;
-    await interaction.reply({ content: `This command can only be used in ${mention}.`, ephemeral: true });
+    await interaction.reply({ content: `Cette commande ne peut être utilisée que dans ${mention}.`, flags: MessageFlags.Ephemeral });
     return false;
 }
 
@@ -71,6 +82,10 @@ const commands = [
     profile.command.toJSON(),
     points.command.toJSON(),
     pointsHistory.command.toJSON(),
+    resetServer.command.toJSON(),
+    deleteAccount.command.toJSON(),
+    deleteUser.command.toJSON(),
+    listUsers.command.toJSON(),
 ];
 
 client.on(Events.ClientReady, async () => {
@@ -115,13 +130,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await points.handleCommand(interaction);
             } else if (interaction.commandName === 'points-history') {
                 await pointsHistory.handleCommand(interaction);
+            } else if (interaction.commandName === 'reset-server') {
+                await resetServer.handleCommand(interaction);
+            } else if (interaction.commandName === 'delete-account') {
+                await deleteAccount.handleCommand(interaction);
+            } else if (interaction.commandName === 'delete-user') {
+                await deleteUser.handleCommand(interaction);
+            } else if (interaction.commandName === 'list-users') {
+                await listUsers.handleCommand(interaction);
             }
         } else if (interaction.isButton()) {
             if (interaction.customId === 'register:esgi' || interaction.customId === 'register:external') {
                 await register.handleButton(interaction);
             }
+        } else if (interaction.isStringSelectMenu()) {
+            if (interaction.customId.startsWith('register-select:')) {
+                await register.handleSelect(interaction);
+            }
         } else if (interaction.isModalSubmit()) {
-            if (interaction.customId === 'register-modal:esgi' || interaction.customId === 'register-modal:external') {
+            if (interaction.customId.startsWith('register-modal:')) {
                 await register.handleModalSubmit(interaction);
             }
         }
