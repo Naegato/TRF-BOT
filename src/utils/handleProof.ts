@@ -27,11 +27,11 @@ export async function handleProofReaction(
     const reactor = await User.findOne({ discordId: discordUser.id });
     if (!reactor || (reactor.role !== 'manager' && reactor.role !== 'deputy')) return;
 
-    // Message author must be registered
+    // Message author must be registered and not external
     const author = reaction.message.author;
     if (!author || author.bot) return;
     const authorUser = await User.findOne({ discordId: author.id });
-    if (!authorUser) return;
+    if (!authorUser || authorUser.role === 'external') return;
 
     // Create point (unique index on messageId prevents duplicates)
     try {

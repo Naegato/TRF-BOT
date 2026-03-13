@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { User } from '../models/User';
-import { Point } from '../models/Point';
 import { buildNickname } from '../utils/nickname';
+import { currentPeriodPoints } from '../utils/rendus';
 
 export const command = new SlashCommandBuilder()
     .setName('profile')
@@ -14,35 +14,34 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const totalPoints = await Point.aggregate([
-        { $match: { discordId: interaction.user.id } },
-        { $group: { _id: null, total: { $sum: '$amount' } } },
-    ]);
-    const points = totalPoints[0]?.total ?? 0;
-
+    const period   = await currentPeriodPoints(user, interaction.guildId!);
     const nickname = buildNickname(user.firstName, user.lastName, user.year, user.track, user.intake);
+
+    const sinceLabel = period.since
+        ? `<t:${Math.floor(period.since.getTime() / 1000)}:D>`
+        : 'the beginning';
 
     const embed = new EmbedBuilder()
         .setTitle(nickname)
         .setThumbnail(interaction.user.displayAvatarURL())
         .setColor(0x5865f2)
         .addFields(
-            { name: 'First name',  value: user.firstName,  inline: true },
-            { name: 'Last name',   value: user.lastName,   inline: true },
-            { name: 'Role',        value: user.role,        inline: true },
+            { name: 'First name', value: user.firstName, inline: true },
+            { name: 'Last name',  value: user.lastName,  inline: true },
+            { name: 'Role',       value: user.role,       inline: true },
         );
 
     if (user.role !== 'external') {
         embed.addFields(
-            { name: 'Year',   value: String(user.year),  inline: true },
-            { name: 'Track',  value: user.track!,         inline: true },
-            { name: 'Intake', value: user.intake!,        inline: true },
+            { name: 'Year',   value: String(user.year), inline: true },
+            { name: 'Track',  value: user.track!,        inline: true },
+            { name: 'Intake', value: user.intake!,       inline: true },
         );
     }
 
     embed.addFields(
-        { name: 'Points',      value: String(points),                                           inline: true },
-        { name: 'Registered',  value: `<t:${Math.floor(user.registeredAt.getTime() / 1000)}:D>`, inline: true },
+        { name: '⭐ OPEN points', value: `**${period.capped}** / ${period.max} pt (since ${sinceLabel})`, inline: false },
+        { name: 'Registered',    value: `<t:${Math.floor(user.registeredAt.getTime() / 1000)}:D>`,        inline: true },
     );
 
     await interaction.reply({ embeds: [embed], ephemeral: true });

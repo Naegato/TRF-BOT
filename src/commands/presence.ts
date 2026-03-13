@@ -27,6 +27,10 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         await interaction.reply({ content: 'You must register first using `/register`.', ephemeral: true });
         return;
     }
+    if (user.role === 'external') {
+        await interaction.reply({ content: 'External members cannot mark attendance.', ephemeral: true });
+        return;
+    }
 
     const session = await Session.findOne({
         guildId: interaction.guildId!,

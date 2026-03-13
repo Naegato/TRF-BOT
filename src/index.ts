@@ -12,6 +12,7 @@ import * as openSession from './commands/openSession';
 import * as closeSession from './commands/closeSession';
 import * as presence from './commands/presence';
 import * as scheduleSession from './commands/scheduleSession';
+import * as createRendu from './commands/createRendu';
 import * as profile from './commands/profile';
 import * as points from './commands/points';
 import * as pointsHistory from './commands/pointsHistory';
@@ -35,6 +36,7 @@ const commands = [
     closeSession.command.toJSON(),
     presence.command.toJSON(),
     scheduleSession.command.toJSON(),
+    createRendu.command.toJSON(),
     profile.command.toJSON(),
     points.command.toJSON(),
     pointsHistory.command.toJSON(),
@@ -72,6 +74,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await presence.handleCommand(interaction);
             } else if (interaction.commandName === 'schedule-session') {
                 await scheduleSession.handleCommand(interaction);
+            } else if (interaction.commandName === 'create-rendu') {
+                await createRendu.handleCommand(interaction);
             } else if (interaction.commandName === 'profile') {
                 await profile.handleCommand(interaction);
             } else if (interaction.commandName === 'points') {
