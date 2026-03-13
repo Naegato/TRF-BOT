@@ -1,90 +1,99 @@
 import {
     SlashCommandBuilder,
     ChatInputCommandInteraction,
+    ButtonBuilder,
+    ButtonStyle,
+    ActionRowBuilder,
+    ButtonInteraction,
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    ActionRowBuilder,
     ModalSubmitInteraction,
-    ButtonBuilder,
-    ButtonStyle,
-    ButtonInteraction,
 } from 'discord.js';
 import { User } from '../models/User';
+import type { Track, Intake } from '../models/User';
+import { buildNickname } from '../utils/nickname';
+import { applyRoles } from '../utils/applyRoles';
 
 export const command = new SlashCommandBuilder()
     .setName('register')
-    .setDescription("S'inscrire sur le serveur");
+    .setDescription('Register yourself on the server');
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const existing = await User.findOne({ discordId: interaction.user.id });
     if (existing) {
-        await interaction.reply({ content: 'Vous êtes déjà inscrit.', ephemeral: true });
+        await interaction.reply({ content: 'You are already registered.', ephemeral: true });
         return;
     }
 
     const esgiButton = new ButtonBuilder()
-        .setCustomId('register-type-esgi')
+        .setCustomId('register:esgi')
         .setLabel('ESGI')
         .setStyle(ButtonStyle.Primary);
 
-    const externeButton = new ButtonBuilder()
-        .setCustomId('register-type-externe')
-        .setLabel('Externe')
+    const externalButton = new ButtonBuilder()
+        .setCustomId('register:external')
+        .setLabel('External')
         .setStyle(ButtonStyle.Secondary);
 
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(esgiButton, externeButton);
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(esgiButton, externalButton);
 
     await interaction.reply({
-        content: 'Êtes-vous étudiant ESGI ou externe ?',
+        content: 'Are you an ESGI student or an external member?',
         components: [row],
         ephemeral: true,
     });
 }
 
-export async function handleButtonInteraction(interaction: ButtonInteraction) {
-    const isExterne = interaction.customId === 'register-type-externe';
+export async function handleButton(interaction: ButtonInteraction) {
+    const isExternal = interaction.customId === 'register:external';
 
     const modal = new ModalBuilder()
-        .setCustomId(isExterne ? 'register-modal-externe' : 'register-modal-esgi')
-        .setTitle('Inscription');
+        .setCustomId(isExternal ? 'register-modal:external' : 'register-modal:esgi')
+        .setTitle('Registration');
 
-    const prenomInput = new TextInputBuilder()
-        .setCustomId('prenom')
-        .setLabel('Prénom')
+    const firstNameInput = new TextInputBuilder()
+        .setCustomId('firstName')
+        .setLabel('First name')
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
-    const nomInput = new TextInputBuilder()
-        .setCustomId('nom')
-        .setLabel('Nom')
+    const lastNameInput = new TextInputBuilder()
+        .setCustomId('lastName')
+        .setLabel('Last name')
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
-    const emailInput = new TextInputBuilder()
-        .setCustomId('email')
-        .setLabel('Email')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-    if (isExterne) {
+    if (isExternal) {
         modal.addComponents(
-            new ActionRowBuilder<TextInputBuilder>().addComponents(prenomInput),
-            new ActionRowBuilder<TextInputBuilder>().addComponents(nomInput),
-            new ActionRowBuilder<TextInputBuilder>().addComponents(emailInput),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(firstNameInput),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(lastNameInput),
         );
     } else {
-        const classeInput = new TextInputBuilder()
-            .setCustomId('classe')
-            .setLabel('Classe')
+        const yearInput = new TextInputBuilder()
+            .setCustomId('year')
+            .setLabel('Year (1–5)')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        const trackInput = new TextInputBuilder()
+            .setCustomId('track')
+            .setLabel('Track (alternating / initial)')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        const intakeInput = new TextInputBuilder()
+            .setCustomId('intake')
+            .setLabel('Intake (january / september)')
             .setStyle(TextInputStyle.Short)
             .setRequired(true);
 
         modal.addComponents(
-            new ActionRowBuilder<TextInputBuilder>().addComponents(prenomInput),
-            new ActionRowBuilder<TextInputBuilder>().addComponents(nomInput),
-            new ActionRowBuilder<TextInputBuilder>().addComponents(classeInput),
-            new ActionRowBuilder<TextInputBuilder>().addComponents(emailInput),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(firstNameInput),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(lastNameInput),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(yearInput),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(trackInput),
+            new ActionRowBuilder<TextInputBuilder>().addComponents(intakeInput),
         );
     }
 
@@ -96,47 +105,62 @@ export async function handleModalSubmit(interaction: ModalSubmitInteraction) {
 
     const existing = await User.findOne({ discordId: interaction.user.id });
     if (existing) {
-        await interaction.editReply('Vous êtes déjà inscrit.');
+        await interaction.editReply('You are already registered.');
         return;
     }
 
-    const isExterne = interaction.customId === 'register-modal-externe';
-    const prenom = interaction.fields.getTextInputValue('prenom').trim();
-    const nom = interaction.fields.getTextInputValue('nom').trim();
-    const email = interaction.fields.getTextInputValue('email').trim();
-    const classe = isExterne
-        ? (process.env.EXTERNAL_CLASS?.toUpperCase() ?? 'EXTERNE')
-        : interaction.fields.getTextInputValue('classe').trim();
+    const isExternal = interaction.customId === 'register-modal:external';
+    const firstName = interaction.fields.getTextInputValue('firstName').trim();
+    const lastName = interaction.fields.getTextInputValue('lastName').trim();
 
-    const guild = interaction.guild!;
-    const member = await guild.members.fetch(interaction.user.id);
+    const member = await interaction.guild!.members.fetch(interaction.user.id);
 
-    const nickname = isExterne
-        ? `${prenom.toUpperCase()} ${nom.toUpperCase()}`
-        : `${prenom.toUpperCase()} ${nom.toUpperCase()} [${classe.toUpperCase()}]`;
-
-    let nicknameChanged = true;
-    try {
-        await member.setNickname(nickname);
-    } catch {
-        nicknameChanged = false;
+    if (isExternal) {
+        const nickname = buildNickname(firstName, lastName);
+        const renamed = await member.setNickname(nickname).then(() => true).catch(() => false);
+        const user = await User.create({ discordId: interaction.user.id, firstName, lastName, role: 'external' });
+        await applyRoles(member, user);
+        const note = renamed ? '' : `\n⚠️ Your nickname could not be changed automatically. Please set it manually to: \`${nickname}\``;
+        await interaction.editReply(`Registration successful! Welcome, **${nickname}**.${note}`);
+        return;
     }
 
-    await guild.roles.fetch();
-    if (isExterne) {
-        const externeRole = guild.roles.cache.find(r => r.name === 'EXTERNE');
-        const esgiRole = guild.roles.cache.find(r => r.name === 'ESGI');
-        if (esgiRole) await member.roles.remove(esgiRole).catch(() => null);
-        if (externeRole) await member.roles.add(externeRole);
-    } else {
-        const esgiRole = guild.roles.cache.find(r => r.name === 'ESGI');
-        const externeRole = guild.roles.cache.find(r => r.name === 'EXTERNE');
-        if (externeRole) await member.roles.remove(externeRole).catch(() => null);
-        if (esgiRole) await member.roles.add(esgiRole);
+    const yearRaw = interaction.fields.getTextInputValue('year').trim();
+    const trackRaw = interaction.fields.getTextInputValue('track').trim().toLowerCase();
+    const intakeRaw = interaction.fields.getTextInputValue('intake').trim().toLowerCase();
+
+    const year = parseInt(yearRaw, 10);
+    if (![1, 2, 3, 4, 5].includes(year)) {
+        await interaction.editReply('Invalid year. Must be a number between 1 and 5.');
+        return;
     }
 
-    await User.create({ discordId: interaction.user.id, nom, prenom, classe, email, roles: [isExterne ? 'externe' : 'esgi'] });
+    if (trackRaw !== 'alternating' && trackRaw !== 'initial') {
+        await interaction.editReply('Invalid track. Must be **alternating** or **initial**.');
+        return;
+    }
 
-    const nicknameNote = nicknameChanged ? '' : '\n⚠️ Votre surnom n\'a pas pu être modifié (propriétaire du serveur).';
-    await interaction.editReply(`Inscription réussie ! Vous êtes enregistré sous le nom **${nickname}**.${nicknameNote}`);
+    if (intakeRaw !== 'january' && intakeRaw !== 'september') {
+        await interaction.editReply('Invalid intake. Must be **january** or **september**.');
+        return;
+    }
+
+    const track = trackRaw as Track;
+    const intake = intakeRaw as Intake;
+    const nickname = buildNickname(firstName, lastName, year, track, intake);
+
+    const renamed = await member.setNickname(nickname).then(() => true).catch(() => false);
+    const user = await User.create({
+        discordId: interaction.user.id,
+        firstName,
+        lastName,
+        role: 'esgi',
+        year: year as 1 | 2 | 3 | 4 | 5,
+        track,
+        intake,
+    });
+    await applyRoles(member, user);
+
+    const note = renamed ? '' : `\n⚠️ Your nickname could not be changed automatically. Please set it manually to: \`${nickname}\``;
+    await interaction.editReply(`Registration successful! Welcome, **${nickname}**.${note}`);
 }
