@@ -1,8 +1,8 @@
 import 'dotenv/config';
-import { Client, Events, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
+import { Client, ChatInputCommandInteraction, Events, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
 import { connectDatabase } from './database';
 import { ensureRoles } from './utils/ensureRoles';
-import { ensureChannels } from './utils/ensureChannels';
+import { ensureChannels, CHANNEL_NAMES } from './utils/ensureChannels';
 import { handleProofReaction } from './utils/handleProof';
 import { restoreScheduledSessions } from './utils/sessionScheduler';
 import * as register from './commands/register';
@@ -16,6 +16,37 @@ import * as createRendu from './commands/createRendu';
 import * as profile from './commands/profile';
 import * as points from './commands/points';
 import * as pointsHistory from './commands/pointsHistory';
+
+// ─── Channel routing ─────────────────────────────────────────────────────────
+
+const COMMAND_CHANNEL: Record<string, string> = {
+    'register':         CHANNEL_NAMES.register,
+    'admin-register':   CHANNEL_NAMES.adminCommands,
+    'set-role':         CHANNEL_NAMES.adminCommands,
+    'open-session':     CHANNEL_NAMES.adminCommands,
+    'close-session':    CHANNEL_NAMES.adminCommands,
+    'schedule-session': CHANNEL_NAMES.adminCommands,
+    'create-rendu':     CHANNEL_NAMES.adminCommands,
+    'profile':          CHANNEL_NAMES.botCommands,
+    'points':           CHANNEL_NAMES.botCommands,
+    'points-history':   CHANNEL_NAMES.botCommands,
+    'presence':         CHANNEL_NAMES.botCommands,
+};
+
+async function assertChannel(interaction: ChatInputCommandInteraction): Promise<boolean> {
+    const required = COMMAND_CHANNEL[interaction.commandName];
+    if (!required) return true;
+
+    const current = interaction.channel;
+    if (current && 'name' in current && current.name === required) return true;
+
+    const target = interaction.guild?.channels.cache.find(c => c.name === required);
+    const mention = target ? `<#${target.id}>` : `#${required}`;
+    await interaction.reply({ content: `This command can only be used in ${mention}.`, ephemeral: true });
+    return false;
+}
+
+// ─── Client ──────────────────────────────────────────────────────────────────
 
 const client = new Client({
     intents: [
@@ -60,6 +91,8 @@ client.on(Events.ClientReady, async () => {
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
+            if (!await assertChannel(interaction)) return;
+
             if (interaction.commandName === 'register') {
                 await register.handleCommand(interaction);
             } else if (interaction.commandName === 'admin-register') {
