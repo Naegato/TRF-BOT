@@ -1,5 +1,4 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
-import { User } from '../models/User';
 import { ALL_MANAGED_ROLE_NAMES } from '../utils/ensureRoles';
 import { CHANNEL_NAMES } from '../utils/ensureChannels';
 import { isManagerOrOwner } from '../utils/permissions';
