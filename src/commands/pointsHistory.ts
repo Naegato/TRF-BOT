@@ -1,6 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder , MessageFlags } from 'discord.js';
-import { User } from '../models/User';
-import { Point } from '../models/Point';
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, MessageFlags } from 'discord.js';
+import { eq, desc, sql } from 'drizzle-orm';
+import { db } from '../database';
+import { users, points } from '../schema';
 
 const PAGE_SIZE = 10;
 
@@ -11,14 +12,14 @@ export const command = new SlashCommandBuilder()
         opt.setName('page').setDescription('Numéro de page (défaut : 1)').setMinValue(1));
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    const user = await User.findOne({ discordId: interaction.user.id });
+    const user = db.select().from(users).where(eq(users.discordId, interaction.user.id)).get();
     if (!user) {
         await interaction.reply({ content: 'Vous devez vous inscrire avec `/register` en premier.', flags: MessageFlags.Ephemeral });
         return;
     }
 
     const page  = (interaction.options.getInteger('page') ?? 1) - 1;
-    const total = await Point.countDocuments({ discordId: interaction.user.id });
+    const total = db.select({ count: sql<number>`count(*)` }).from(points).where(eq(points.discordId, interaction.user.id)).get()?.count ?? 0;
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
     if (page >= pages) {
@@ -26,10 +27,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const entries = await Point.find({ discordId: interaction.user.id })
-        .sort({ createdAt: -1 })
-        .skip(page * PAGE_SIZE)
-        .limit(PAGE_SIZE);
+    const entries = db.select().from(points)
+        .where(eq(points.discordId, interaction.user.id))
+        .orderBy(desc(points.createdAt))
+        .limit(PAGE_SIZE)
+        .offset(page * PAGE_SIZE)
+        .all();
 
     const lines = entries.map(e => {
         const icon      = e.type === 'proof' ? '📸' : '📋';

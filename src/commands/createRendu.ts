@@ -6,10 +6,9 @@ import {
     TextChannel,
     MessageFlags,
 } from 'discord.js';
-import { User } from '../models/User';
-import { Session } from '../models/Session';
-import { Point } from '../models/Point';
-import { Rendu } from '../models/Rendu';
+import { eq, ne, and, or, inArray, gt, isNotNull, gte, asc } from 'drizzle-orm';
+import { db } from '../database';
+import { users, sessions, points, rendus } from '../schema';
 import { CHANNEL_NAMES } from '../utils/ensureChannels';
 import { lastRenduForUser, MAX_POINTS } from '../utils/rendus';
 import { isAdminOrOwner } from '../utils/permissions';
@@ -80,49 +79,50 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const filterIntake = interaction.options.getString('intake') as Intake | null;
 
     // ── Save rendu to DB (becomes the new period boundary) ────────────────────
-    const rendu = await Rendu.create({
+    const rendu = db.insert(rendus).values({
         guildId:   interaction.guildId!,
         createdBy: interaction.user.id,
         ...(filterYear   && { year: filterYear }),
         ...(filterTrack  && { track: filterTrack }),
         ...(filterIntake && { intake: filterIntake }),
-    });
+    }).returning().get()!;
 
     // ── Fetch users matching the filter (externals always excluded) ───────────
     const hasFilters = filterYear || filterTrack || filterIntake;
-    const groupFilter: Record<string, unknown> = { role: { $ne: 'external' } };
-    if (filterYear)   groupFilter.year   = filterYear;
-    if (filterTrack)  groupFilter.track  = filterTrack;
-    if (filterIntake) groupFilter.intake = filterIntake;
+    const groupConditions = [
+        ne(users.role, 'external' as const),
+        ...(filterYear   ? [eq(users.year,   filterYear)]   : []),
+        ...(filterTrack  ? [eq(users.track,  filterTrack)]  : []),
+        ...(filterIntake ? [eq(users.intake, filterIntake)] : []),
+    ];
 
-    const users = await User.find(
-        hasFilters
-            // With filters: match the group OR always include managers/deputies
-            ? { $or: [groupFilter, { role: { $in: ['manager', 'deputy'] } }] }
-            // No filters: everyone except externals
-            : { role: { $ne: 'external' } },
-    ).sort({ lastName: 1, firstName: 1 });
+    const userFilter = hasFilters
+        ? or(and(...groupConditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]])  , inArray(users.role, ['manager', 'deputy']))
+        : ne(users.role, 'external' as const);
+
+    const userList = db.select().from(users).where(userFilter).orderBy(asc(users.lastName), asc(users.firstName)).all();
 
     // ── For each user, find their period start (last rendu before this one) ───
     type UserPeriod = {
-        proofPoints:        number;
-        sessionAttendance:  Map<string, boolean>;
-        totalRaw:           number;
-        totalCapped:        number;
-        max:                number;
-        since:              Date | null;
+        proofPoints:       number;
+        sessionAttendance: Map<string, boolean>;
+        totalRaw:          number;
+        totalCapped:       number;
+        max:               number;
+        since:             Date | null;
     };
 
     const periodByUser = new Map<string, UserPeriod>();
 
-    for (const user of users) {
-        const prev = await lastRenduForUser(user, interaction.guildId!);
+    for (const user of userList) {
+        const prev = lastRenduForUser(user, interaction.guildId!);
         // Exclude the rendu we just created (it's the boundary, not the start of this period)
-        const prevActual = prev && String(prev._id) !== String(rendu._id) ? prev : null;
+        const prevActual = prev && prev.id !== rendu.id ? prev : null;
         const since = prevActual?.createdAt ?? null;
 
-        const dateFilter = since ? { createdAt: { $gt: since } } : {};
-        const userPoints = await Point.find({ discordId: user.discordId, ...dateFilter });
+        const userPoints = since
+            ? db.select().from(points).where(and(eq(points.discordId, user.discordId), gt(points.createdAt, since))).all()
+            : db.select().from(points).where(eq(points.discordId, user.discordId)).all();
 
         const proofPoints = userPoints
             .filter(p => p.type === 'proof')
@@ -132,8 +132,8 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
             .filter(p => p.type === 'session')
             .map(p => String(p.sessionId));
 
-        const totalRaw    = userPoints.reduce((sum, p) => sum + p.amount, 0);
-        const max         = MAX_POINTS[user.role];
+        const totalRaw = userPoints.reduce((sum, p) => sum + p.amount, 0);
+        const max      = MAX_POINTS[user.role];
 
         periodByUser.set(user.discordId, {
             proofPoints,
@@ -149,12 +149,13 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const allSinces = [...periodByUser.values()].map(p => p.since?.getTime() ?? 0);
     const minSince  = new Date(Math.min(...allSinces));
 
-    const sessions = await Session.find({
-        openedAt: { $gte: minSince },
-    }).sort({ openedAt: 1 });
+    const sessionList = db.select().from(sessions)
+        .where(and(isNotNull(sessions.openedAt), gte(sessions.openedAt, minSince)))
+        .orderBy(asc(sessions.openedAt))
+        .all();
 
-    const sessionIds    = sessions.map(s => String(s._id));
-    const sessionLabels = sessions.map(s =>
+    const sessionIds    = sessionList.map(s => String(s.id));
+    const sessionLabels = sessionList.map(s =>
         s.openedAt!.toLocaleDateString('fr-FR', {
             timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric',
         }),
@@ -165,12 +166,11 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         row('Nom', 'Prénom', 'Promotion', 'Filière', 'Rentrée', ...sessionLabels, 'Points Preuve', 'Total Points', 'Points Max', 'Total OPEN'),
     ];
 
-    for (const user of users) {
+    for (const user of userList) {
         const p = periodByUser.get(user.discordId)!;
 
         const attendance = sessionIds.map(sid => {
-            // Only count if this session is within the user's period
-            const session = sessions.find(s => String(s._id) === sid);
+            const session = sessionList.find(s => String(s.id) === sid);
             if (!session || !session.openedAt) return 0;
             if (p.since && session.openedAt <= p.since) return 0;
             return p.sessionAttendance.has(sid) ? 1 : 0;

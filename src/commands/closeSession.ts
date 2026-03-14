@@ -1,5 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
-import { Session } from '../models/Session';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { eq, and, isNull, isNotNull } from 'drizzle-orm';
+import { db } from '../database';
+import { sessions } from '../schema';
 import { closeSessionNow } from '../utils/sessionScheduler';
 import { isAdminOrOwner } from '../utils/permissions';
 
@@ -13,11 +15,9 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const session = await Session.findOne({
-        guildId:  interaction.guildId!,
-        openedAt: { $exists: true },
-        closedAt: { $exists: false },
-    });
+    const session = db.select().from(sessions)
+        .where(and(eq(sessions.guildId, interaction.guildId!), isNotNull(sessions.openedAt), isNull(sessions.closedAt)))
+        .get();
     if (!session) {
         await interaction.reply({ content: 'Aucune séance en cours.', flags: MessageFlags.Ephemeral });
         return;

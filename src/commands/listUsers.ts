@@ -1,5 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder , MessageFlags } from 'discord.js';
-import { User } from '../models/User';
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, MessageFlags } from 'discord.js';
+import { asc } from 'drizzle-orm';
+import { db } from '../database';
+import { users } from '../schema';
 import { buildNickname } from '../utils/nickname';
 import { isAdminOrOwner } from '../utils/permissions';
 
@@ -22,29 +24,29 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const users = await User.find().sort({ lastName: 1, firstName: 1 });
+    const allUsers = db.select().from(users).orderBy(asc(users.lastName), asc(users.firstName)).all();
 
-    if (users.length === 0) {
+    if (allUsers.length === 0) {
         await interaction.reply({ content: 'Aucun utilisateur inscrit.', flags: MessageFlags.Ephemeral });
         return;
     }
 
     // Group by role
-    const groups = new Map<string, typeof users>();
+    const groups = new Map<string, typeof allUsers>();
     for (const role of GROUP_ORDER) groups.set(role, []);
-    for (const user of users) groups.get(user.role)?.push(user);
+    for (const user of allUsers) groups.get(user.role)?.push(user);
 
     const embed = new EmbedBuilder()
         .setTitle('Utilisateurs inscrits')
         .setColor(0x5865f2)
-        .setFooter({ text: `${users.length} membre(s) au total` });
+        .setFooter({ text: `${allUsers.length} membre(s) au total` });
 
     for (const role of GROUP_ORDER) {
         const group = groups.get(role)!;
         if (group.length === 0) continue;
 
         const lines = group.map(u => {
-            const nickname = buildNickname(u.firstName, u.lastName, u.year, u.track, u.intake);
+            const nickname = buildNickname(u.firstName, u.lastName, u.year ?? undefined, u.track ?? undefined, u.intake ?? undefined);
             return `<@${u.discordId}> — ${nickname}`;
         });
 

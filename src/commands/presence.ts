@@ -1,14 +1,14 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
-import { User } from '../models/User';
-import { Session } from '../models/Session';
-import { Point } from '../models/Point';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { eq, and, isNull, isNotNull } from 'drizzle-orm';
+import { db } from '../database';
+import { users, sessions, points } from '../schema';
 
 export const command = new SlashCommandBuilder()
     .setName('presence')
     .setDescription('Marquer votre présence pour la séance en cours');
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    const user = await User.findOne({ discordId: interaction.user.id });
+    const user = db.select().from(users).where(eq(users.discordId, interaction.user.id)).get();
     if (!user) {
         await interaction.reply({ content: 'Vous devez vous inscrire avec `/register` avant de pouvoir marquer votre présence.', flags: MessageFlags.Ephemeral });
         return;
@@ -18,23 +18,21 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const session = await Session.findOne({
-        guildId:  interaction.guildId!,
-        openedAt: { $exists: true },
-        closedAt: { $exists: false },
-    });
+    const session = db.select().from(sessions)
+        .where(and(eq(sessions.guildId, interaction.guildId!), isNotNull(sessions.openedAt), isNull(sessions.closedAt)))
+        .get();
     if (!session) {
         await interaction.reply({ content: 'Aucune séance en cours.', flags: MessageFlags.Ephemeral });
         return;
     }
 
     try {
-        await Point.create({
+        db.insert(points).values({
             discordId: interaction.user.id,
             type:      'session',
             grantedBy: session.openedBy,
-            sessionId: session._id,
-        });
+            sessionId: session.id,
+        }).run();
         await interaction.reply({ content: '✅ Votre présence a été enregistrée !', flags: MessageFlags.Ephemeral });
     } catch {
         await interaction.reply({ content: 'Vous avez déjà marqué votre présence pour cette séance.', flags: MessageFlags.Ephemeral });

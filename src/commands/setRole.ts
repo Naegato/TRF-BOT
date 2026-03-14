@@ -1,5 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
-import { User } from '../models/User';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../database';
+import { users } from '../schema';
 import type { Role } from '../models/User';
 import { applyRoles } from '../utils/applyRoles';
 import { isAdminOrOwner } from '../utils/permissions';
@@ -29,7 +31,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const target  = interaction.options.getUser('user', true);
     const newRole = interaction.options.getString('role', true) as Role;
 
-    const targetUser = await User.findOne({ discordId: target.id });
+    const targetUser = db.select().from(users).where(eq(users.discordId, target.id)).get();
     if (!targetUser) {
         await interaction.reply({ content: `<@${target.id}> n'est pas inscrit(e).`, flags: MessageFlags.Ephemeral });
         return;
@@ -42,12 +44,11 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const oldRole      = targetUser.role;
-    targetUser.role    = newRole;
-    await targetUser.save();
+    const oldRole = targetUser.role;
+    const [updated] = db.update(users).set({ role: newRole }).where(eq(users.discordId, target.id)).returning().all();
 
     const member = await interaction.guild!.members.fetch(target.id);
-    await applyRoles(member, targetUser);
+    await applyRoles(member, updated);
 
     await interaction.editReply(`Le rôle de <@${target.id}> a été mis à jour : **${oldRole}** → **${newRole}**.`);
 }
