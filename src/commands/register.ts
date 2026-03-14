@@ -13,7 +13,9 @@ import {
     StringSelectMenuInteraction,
     MessageFlags,
 } from 'discord.js';
-import { User } from '../models/User';
+import { eq } from 'drizzle-orm';
+import { db } from '../database';
+import { users } from '../schema';
 import type { Track, Intake } from '../models/User';
 import { buildNickname } from '../utils/nickname';
 import { applyRoles } from '../utils/applyRoles';
@@ -23,7 +25,7 @@ export const command = new SlashCommandBuilder()
     .setDescription("S'inscrire sur le serveur");
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    const existing = await User.findOne({ discordId: interaction.user.id });
+    const existing = db.select().from(users).where(eq(users.discordId, interaction.user.id)).get();
     if (existing) {
         await interaction.reply({ content: 'Vous êtes déjà inscrit(e).', flags: MessageFlags.Ephemeral });
         return;
@@ -80,7 +82,7 @@ export async function handleSelect(interaction: StringSelectMenuInteraction) {
 export async function handleModalSubmit(interaction: ModalSubmitInteraction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const existing = await User.findOne({ discordId: interaction.user.id });
+    const existing = db.select().from(users).where(eq(users.discordId, interaction.user.id)).get();
     if (existing) {
         await interaction.editReply('Vous êtes déjà inscrit(e).');
         return;
@@ -95,23 +97,23 @@ export async function handleModalSubmit(interaction: ModalSubmitInteraction) {
     if (isExternal) {
         const nickname = buildNickname(firstName, lastName);
         const renamed  = await member.setNickname(nickname).then(() => true).catch(() => false);
-        const user     = await User.create({ discordId: interaction.user.id, firstName, lastName, role: 'external' });
+        const [user]   = db.insert(users).values({ discordId: interaction.user.id, firstName, lastName, role: 'external' }).returning().all();
         await applyRoles(member, user);
         const note = renamed ? '' : `\n⚠️ Votre surnom n'a pas pu être défini automatiquement. Veuillez le définir manuellement : \`${nickname}\``;
         await interaction.editReply(`Inscription réussie ! Bienvenue, **${nickname}**.${note}`);
         return;
     }
 
-    const year   = parseInt(parts[2], 10) as 1 | 2 | 3 | 4 | 5;
+    const year   = parseInt(parts[2], 10);
     const track  = parts[3] as Track;
     const intake = parts[4] as Intake;
 
     const nickname = buildNickname(firstName, lastName, year, track, intake);
     const renamed  = await member.setNickname(nickname).then(() => true).catch(() => false);
-    const user     = await User.create({
+    const [user]   = db.insert(users).values({
         discordId: interaction.user.id, firstName, lastName,
         role: 'esgi', year, track, intake,
-    });
+    }).returning().all();
     await applyRoles(member, user);
 
     const note = renamed ? '' : `\n⚠️ Votre surnom n'a pas pu être défini automatiquement. Veuillez le définir manuellement : \`${nickname}\``;

@@ -1,5 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
-import { User } from '../models/User';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../database';
+import { users } from '../schema';
 import { ALL_MANAGED_ROLE_NAMES } from '../utils/ensureRoles';
 
 export const command = new SlashCommandBuilder()
@@ -11,7 +13,7 @@ export const command = new SlashCommandBuilder()
             .setRequired(true));
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    const user = await User.findOne({ discordId: interaction.user.id });
+    const user = db.select().from(users).where(eq(users.discordId, interaction.user.id)).get();
     if (!user) {
         await interaction.reply({ content: "Vous n'êtes pas inscrit(e).", flags: MessageFlags.Ephemeral });
         return;
@@ -32,7 +34,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         await member.setNickname(null).catch(() => null);
     }
 
-    await User.deleteOne({ discordId: interaction.user.id });
+    db.delete(users).where(eq(users.discordId, interaction.user.id)).run();
 
     await interaction.editReply('Votre compte a été supprimé. Vous pouvez vous réinscrire avec `/register`.');
 }

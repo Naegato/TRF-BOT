@@ -8,6 +8,7 @@ export const CHANNEL_NAMES = {
     proof:         'proof',
     presence:      'presence',
     rendu:         'rendu',
+    errorLog:      'error-log',
 } as const;
 
 type ChannelSpec = {
@@ -89,6 +90,16 @@ export async function ensureChannels(guild: Guild): Promise<void> {
                 await ch.permissionOverwrites.set([
                     { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
                     ...adminRoles.map(r => ({ id: r!.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] })),
+                ]);
+            },
+        },
+        {
+            // Error log — visible to admins only, bot can write
+            name: CHANNEL_NAMES.errorLog,
+            setup: async (ch) => {
+                await ch.permissionOverwrites.set([
+                    { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                    ...adminRoles.map(r => ({ id: r!.id, allow: [PermissionFlagsBits.ViewChannel], deny: [PermissionFlagsBits.SendMessages] })),
                 ]);
             },
         },

@@ -1,5 +1,6 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
-import { Session } from '../models/Session';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { db } from '../database';
+import { sessions } from '../schema';
 import { scheduleSessionTimers } from '../utils/sessionScheduler';
 import { isAdminOrOwner } from '../utils/permissions';
 
@@ -65,14 +66,14 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const session = await Session.create({
+    const [session] = db.insert(sessions).values({
         guildId:        interaction.guildId!,
         openedBy:       interaction.user.id,
         scheduledStart,
         scheduledEnd,
-    });
+    }).returning().all();
 
-    scheduleSessionTimers(interaction.client, session._id!.toString(), scheduledStart, scheduledEnd);
+    scheduleSessionTimers(interaction.client, session.id, scheduledStart, scheduledEnd);
 
     const fmt = (d: Date) => d.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' });
     await interaction.reply({

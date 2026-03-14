@@ -1,6 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder , MessageFlags } from 'discord.js';
-import { User } from '../models/User';
-import { Point } from '../models/Point';
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, MessageFlags } from 'discord.js';
+import { eq, and, gt, sql } from 'drizzle-orm';
+import { db } from '../database';
+import { users, points } from '../schema';
 import { currentPeriodPoints } from '../utils/rendus';
 
 export const command = new SlashCommandBuilder()
@@ -8,22 +9,26 @@ export const command = new SlashCommandBuilder()
     .setDescription('Voir vos points pour la période en cours');
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    const user = await User.findOne({ discordId: interaction.user.id });
+    const user = db.select().from(users).where(eq(users.discordId, interaction.user.id)).get();
     if (!user) {
         await interaction.reply({ content: 'Vous devez vous inscrire avec `/register` en premier.', flags: MessageFlags.Ephemeral });
         return;
     }
 
-    const period = await currentPeriodPoints(user, interaction.guildId!);
+    const period = currentPeriodPoints(user, interaction.guildId!);
 
-    const dateFilter = period.since ? { $gt: period.since } : {};
-    const breakdown  = await Point.aggregate([
-        { $match: { discordId: interaction.user.id, createdAt: dateFilter } },
-        { $group: { _id: '$type', total: { $sum: '$amount' }, count: { $sum: 1 } } },
-    ]);
+    const whereClause = period.since
+        ? and(eq(points.discordId, interaction.user.id), gt(points.createdAt, period.since))
+        : eq(points.discordId, interaction.user.id);
+
+    const breakdown = db.select({
+        type:  points.type,
+        total: sql<number>`sum(${points.amount})`,
+        count: sql<number>`count(*)`,
+    }).from(points).where(whereClause).groupBy(points.type).all();
 
     const byType: Record<string, { total: number; count: number }> = {};
-    for (const entry of breakdown) byType[entry._id] = { total: entry.total, count: entry.count };
+    for (const entry of breakdown) byType[entry.type] = { total: entry.total, count: entry.count };
 
     const proofEntry   = byType['proof']   ?? { total: 0, count: 0 };
     const sessionEntry = byType['session'] ?? { total: 0, count: 0 };

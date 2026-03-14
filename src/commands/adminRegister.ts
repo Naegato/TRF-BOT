@@ -1,5 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
-import { User } from '../models/User';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../database';
+import { users } from '../schema';
 import type { Role, Track, Intake } from '../models/User';
 import { buildNickname } from '../utils/nickname';
 import { applyRoles } from '../utils/applyRoles';
@@ -57,7 +59,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const lastName  = interaction.options.getString('lastname', true).trim();
     const role      = interaction.options.getString('role', true) as Role;
     const yearRaw   = interaction.options.getInteger('year');
-    const year      = yearRaw !== null ? (yearRaw as 1 | 2 | 3 | 4 | 5) : undefined;
+    const year      = yearRaw !== null ? yearRaw : undefined;
     const track     = interaction.options.getString('track') as Track | null ?? undefined;
     const intake    = interaction.options.getString('intake') as Intake | null ?? undefined;
 
@@ -75,7 +77,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         }
     }
 
-    const existing = await User.findOne({ discordId: target.id });
+    const existing = db.select().from(users).where(eq(users.discordId, target.id)).get();
     if (existing) {
         await interaction.reply({ content: `<@${target.id}> est déjà inscrit(e).`, flags: MessageFlags.Ephemeral });
         return;
@@ -86,7 +88,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const nickname = buildNickname(firstName, lastName, year, track, intake);
     const member   = await interaction.guild!.members.fetch(target.id);
     const renamed  = await member.setNickname(nickname).then(() => true).catch(() => false);
-    const user     = await User.create({ discordId: target.id, firstName, lastName, role, year, track, intake });
+    const [user]   = db.insert(users).values({ discordId: target.id, firstName, lastName, role, year: year ?? null, track: track ?? null, intake: intake ?? null }).returning().all();
     await applyRoles(member, user);
 
     const note = renamed ? '' : `\n⚠️ Le surnom n'a pas pu être défini automatiquement. À définir manuellement : \`${nickname}\``;

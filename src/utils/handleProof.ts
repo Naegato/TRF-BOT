@@ -1,6 +1,7 @@
 import { MessageReaction, PartialMessageReaction, User as DiscordUser, PartialUser } from 'discord.js';
-import { User } from '../models/User';
-import { Point } from '../models/Point';
+import { eq } from 'drizzle-orm';
+import { db } from '../database';
+import { users, points } from '../schema';
 import { CHANNEL_NAMES } from './ensureChannels';
 
 const APPROVAL_EMOJI = '✅';
@@ -24,23 +25,23 @@ export async function handleProofReaction(
     if (!hasImage) return;
 
     // Reactor must be a manager or deputy
-    const reactor = await User.findOne({ discordId: discordUser.id });
+    const reactor = db.select().from(users).where(eq(users.discordId, discordUser.id)).get();
     if (!reactor || (reactor.role !== 'manager' && reactor.role !== 'deputy')) return;
 
     // Message author must be registered and not external
     const author = reaction.message.author;
     if (!author || author.bot) return;
-    const authorUser = await User.findOne({ discordId: author.id });
+    const authorUser = db.select().from(users).where(eq(users.discordId, author.id)).get();
     if (!authorUser || authorUser.role === 'external') return;
 
     // Create point (unique index on messageId prevents duplicates)
     try {
-        await Point.create({
+        db.insert(points).values({
             discordId: author.id,
-            type: 'proof',
+            type:      'proof',
             grantedBy: discordUser.id,
             messageId: reaction.message.id,
-        });
+        }).run();
         await reaction.message.react('🏆');
     } catch {
         // Duplicate reaction or already rewarded — silently ignore

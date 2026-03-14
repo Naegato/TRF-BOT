@@ -1,5 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder , MessageFlags } from 'discord.js';
-import { User } from '../models/User';
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, MessageFlags } from 'discord.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../database';
+import { users } from '../schema';
 import { buildNickname } from '../utils/nickname';
 import { currentPeriodPoints } from '../utils/rendus';
 
@@ -8,14 +10,14 @@ export const command = new SlashCommandBuilder()
     .setDescription('Voir votre profil');
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    const user = await User.findOne({ discordId: interaction.user.id });
+    const user = db.select().from(users).where(eq(users.discordId, interaction.user.id)).get();
     if (!user) {
         await interaction.reply({ content: 'Vous devez vous inscrire avec `/register` en premier.', flags: MessageFlags.Ephemeral });
         return;
     }
 
-    const period   = await currentPeriodPoints(user, interaction.guildId!);
-    const nickname = buildNickname(user.firstName, user.lastName, user.year, user.track, user.intake);
+    const period   = currentPeriodPoints(user, interaction.guildId!);
+    const nickname = buildNickname(user.firstName, user.lastName, user.year ?? undefined, user.track ?? undefined, user.intake ?? undefined);
 
     const sinceLabel = period.since
         ? `<t:${Math.floor(period.since.getTime() / 1000)}:D>`

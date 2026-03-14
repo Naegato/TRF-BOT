@@ -1,6 +1,7 @@
 import 'dotenv/config';
-import { Client, ChatInputCommandInteraction, Events, GatewayIntentBits, MessageFlags, Partials, REST, Routes } from 'discord.js';
+import { Client, ChatInputCommandInteraction, DiscordAPIError, Events, GatewayIntentBits, MessageFlags, Partials, REST, Routes } from 'discord.js';
 import { connectDatabase } from './database';
+import { reportError } from './utils/reportError';
 import { ensureRoles } from './utils/ensureRoles';
 import { ensureChannels, CHANNEL_NAMES } from './utils/ensureChannels';
 import { handleProofReaction } from './utils/handleProof';
@@ -103,6 +104,24 @@ client.on(Events.ClientReady, async () => {
     await restoreScheduledSessions(client);
 });
 
+// ─── Discord client error handler ────────────────────────────────────────────
+
+client.on(Events.Error, async (err) => {
+    await reportError(client, err, 'Discord client');
+});
+
+// ─── Process-level error handlers (prevent crashes) ──────────────────────────
+
+process.on('unhandledRejection', async (reason) => {
+    await reportError(client, reason, 'Unhandled rejection');
+});
+
+process.on('uncaughtException', async (err) => {
+    await reportError(client, err, 'Uncaught exception');
+});
+
+// ─── Interactions ─────────────────────────────────────────────────────────────
+
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
@@ -153,7 +172,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
             }
         }
     } catch (err) {
-        console.error('InteractionCreate error:', err);
+        // 10062 = interaction token expired (harmless race at startup)
+        // 40060 = interaction already acknowledged (harmless double-trigger)
+        if (err instanceof DiscordAPIError && (err.code === 10062 || err.code === 40060)) return;
+
+        // Try to notify the user before reporting
+        try {
+            if (interaction.isChatInputCommand()) {
+                const msg = '❌ Une erreur est survenue. Les administrateurs ont été notifiés.';
+                if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+                else if (interaction.deferred) await interaction.editReply(msg);
+            }
+        } catch { /* interaction may have expired */ }
+
+        await reportError(client, err, `Commande /${interaction.isChatInputCommand() ? interaction.commandName : interaction.type}`);
     }
 });
 
@@ -161,7 +193,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     try {
         await handleProofReaction(reaction, user);
     } catch (err) {
-        console.error('MessageReactionAdd error:', err);
+        await reportError(client, err, 'MessageReactionAdd');
     }
 });
 

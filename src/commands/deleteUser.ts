@@ -1,5 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
-import { User } from '../models/User';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { eq } from 'drizzle-orm';
+import { db } from '../database';
+import { users } from '../schema';
 import { ALL_MANAGED_ROLE_NAMES } from '../utils/ensureRoles';
 import { isAdminOrOwner } from '../utils/permissions';
 
@@ -17,7 +19,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     const target = interaction.options.getUser('user', true);
 
-    const targetUser = await User.findOne({ discordId: target.id });
+    const targetUser = db.select().from(users).where(eq(users.discordId, target.id)).get();
     if (!targetUser) {
         await interaction.reply({ content: `<@${target.id}> n'est pas inscrit(e).`, flags: MessageFlags.Ephemeral });
         return;
@@ -32,7 +34,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         await member.setNickname(null).catch(() => null);
     }
 
-    await User.deleteOne({ discordId: target.id });
+    db.delete(users).where(eq(users.discordId, target.id)).run();
 
     await interaction.editReply(`Le compte de <@${target.id}> a été supprimé.`);
 }
