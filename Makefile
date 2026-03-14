@@ -7,6 +7,13 @@ requirement:
 install: requirement
 	pnpm install
 
+deploy:
+	docker compose down --remove-orphans
+	rm -rf dist node_modules
+	docker compose up -d
+	docker compose logs -f app
+
+
 up: install db-up
 	pnpm dev
 
