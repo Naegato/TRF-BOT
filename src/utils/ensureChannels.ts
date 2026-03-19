@@ -1,11 +1,12 @@
 import { ChannelType, Guild, PermissionFlagsBits, TextChannel } from 'discord.js';
-import { USER_ROLE_NAMES } from './ensureRoles';
+import { USER_ROLE_NAMES, TEMP_ROLE_NAME } from './ensureRoles';
 
 export const CHANNEL_NAMES = {
-    register:      'register',
-    botCommands:   'command-bot',
-    adminCommands: 'admin-command-bot',
-    proof:         'proof',
+    rules:     'règlement',
+    register:      'inscription-bot',
+    botCommands:   'commands-bot',
+    adminCommands: 'admin-commands-bot',
+    proof:         'preuve',
     presence:      'presence',
     rendu:         'rendu',
     errorLog:      'error-log',
@@ -27,18 +28,31 @@ export async function ensureChannels(guild: Guild): Promise<void> {
     const managerRole  = role(USER_ROLE_NAMES.manager);
     const deputyRole   = role(USER_ROLE_NAMES.deputy);
 
+    const tempRole        = role(TEMP_ROLE_NAME);
     const registeredRoles = [esgiRole, externalRole, managerRole, deputyRole].filter(Boolean);
     const adminRoles      = [managerRole, deputyRole].filter(Boolean);
 
     const specs: ChannelSpec[] = [
         {
-            // Visible only to non-registered users (no assigned role yet)
+            // Visible to everyone, read-only — Temp can add reactions to approve rules
+            name: CHANNEL_NAMES.rules,
+            setup: async (ch) => {
+                await ch.permissionOverwrites.set([
+                    { id: guild.id,    allow: [PermissionFlagsBits.ViewChannel], deny: [PermissionFlagsBits.SendMessages, PermissionFlagsBits.AddReactions] },
+                    ...(tempRole ? [{ id: tempRole.id, allow: [PermissionFlagsBits.AddReactions] }] : []),
+                ]);
+            },
+        },
+        {
+            // Visible only to users without any role (post-règlement, pre-inscription)
             name: CHANNEL_NAMES.register,
             setup: async (ch) => {
                 await ch.permissionOverwrites.set([
                     { id: guild.id, allow: [PermissionFlagsBits.ViewChannel] },
+                    ...(tempRole ? [{ id: tempRole.id, deny: [PermissionFlagsBits.ViewChannel] }] : []),
                     ...registeredRoles.map(r => ({ id: r!.id, deny: [PermissionFlagsBits.ViewChannel] })),
                 ]);
+                await ch.setTopic('Pour vous inscrire, utilisez la commande /inscription dans ce channel.');
             },
         },
         {

@@ -1,10 +1,10 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../database';
 import { users } from '../schema';
 import type { Role } from '../models/User';
 import { applyRoles } from '../utils/applyRoles';
-import { isAdminOrOwner } from '../utils/permissions';
+import { requirePermission } from '../utils/permissions';
 
 export const command = new SlashCommandBuilder()
     .setName('set-role')
@@ -20,14 +20,10 @@ export const command = new SlashCommandBuilder()
                 { name: 'ESGI',    value: 'esgi' },
                 { name: 'Gérant',  value: 'manager' },
                 { name: 'Adjoint', value: 'deputy' },
-            ));
+            ))
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    if (!await isAdminOrOwner(interaction)) {
-        await interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", flags: MessageFlags.Ephemeral });
-        return;
-    }
-
+async function handleCommandImpl(interaction: ChatInputCommandInteraction) {
     const target  = interaction.options.getUser('user', true);
     const newRole = interaction.options.getString('role', true) as Role;
 
@@ -52,3 +48,5 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply(`Le rôle de <@${target.id}> a été mis à jour : **${oldRole}** → **${newRole}**.`);
 }
+
+export const handleCommand = requirePermission('admin', handleCommandImpl);

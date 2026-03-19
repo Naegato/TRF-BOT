@@ -1,45 +1,39 @@
 import 'dotenv/config';
-import { Client, ChatInputCommandInteraction, DiscordAPIError, Events, GatewayIntentBits, MessageFlags, Partials, REST, Routes } from 'discord.js';
+import { Client, ChatInputCommandInteraction, DiscordAPIError, Events, GatewayIntentBits, MessageFlags, Partials, REST, Routes, TextChannel } from 'discord.js';
 import { connectDatabase } from './database';
 import { reportError } from './utils/reportError';
 import { ensureRoles } from './utils/ensureRoles';
 import { ensureChannels, CHANNEL_NAMES } from './utils/ensureChannels';
 import { handleProofReaction } from './utils/handleProof';
+import { ensureRulesMessage } from './utils/ensureRulesMessage';
+import { handleRulesReaction } from './utils/handleRulesReaction';
+import { TEMP_ROLE_NAME } from './utils/ensureRoles';
 import { restoreScheduledSessions } from './utils/sessionScheduler';
-import * as register from './commands/register';
-import * as adminRegister from './commands/adminRegister';
-import * as setRole from './commands/setRole';
-import * as openSession from './commands/openSession';
-import * as closeSession from './commands/closeSession';
-import * as presence from './commands/presence';
-import * as scheduleSession from './commands/scheduleSession';
-import * as createRendu from './commands/createRendu';
-import * as profile from './commands/profile';
-import * as points from './commands/points';
-import * as pointsHistory from './commands/pointsHistory';
-import * as resetServer from './commands/resetServer';
-import * as deleteAccount from './commands/deleteAccount';
-import * as deleteUser from './commands/deleteUser';
-import * as listUsers from './commands/listUsers';
+import { commandsJSON, commandMap, buttonHandlers, selectHandlers, modalHandlers } from './commands/registry';
 
 // ─── Channel routing ─────────────────────────────────────────────────────────
 
 const COMMAND_CHANNEL: Record<string, string> = {
-    'register':         CHANNEL_NAMES.register,
-    'admin-register':   CHANNEL_NAMES.adminCommands,
-    'set-role':         CHANNEL_NAMES.adminCommands,
-    'open-session':     CHANNEL_NAMES.adminCommands,
-    'close-session':    CHANNEL_NAMES.adminCommands,
-    'schedule-session': CHANNEL_NAMES.adminCommands,
-    'create-rendu':     CHANNEL_NAMES.adminCommands,
-    'reset-server':     CHANNEL_NAMES.adminCommands,
-    'delete-user':      CHANNEL_NAMES.adminCommands,
-    'list-users':       CHANNEL_NAMES.adminCommands,
-    'profile':          CHANNEL_NAMES.botCommands,
-    'points':           CHANNEL_NAMES.botCommands,
-    'points-history':   CHANNEL_NAMES.botCommands,
-    'presence':         CHANNEL_NAMES.botCommands,
-    'delete-account':   CHANNEL_NAMES.botCommands,
+    'inscription':        CHANNEL_NAMES.register,
+    'admin-register':     CHANNEL_NAMES.adminCommands,
+    'set-role':           CHANNEL_NAMES.adminCommands,
+    'open-session':       CHANNEL_NAMES.adminCommands,
+    'close-session':      CHANNEL_NAMES.adminCommands,
+    'schedule-session':   CHANNEL_NAMES.adminCommands,
+    'create-rendu':       CHANNEL_NAMES.adminCommands,
+    'reset-server':       CHANNEL_NAMES.adminCommands,
+    'delete-user':        CHANNEL_NAMES.adminCommands,
+    'list-users':         CHANNEL_NAMES.adminCommands,
+    'stopbot':            CHANNEL_NAMES.adminCommands,
+    'set-rules-message':  CHANNEL_NAMES.adminCommands,
+    'send-rules':         CHANNEL_NAMES.adminCommands,
+    'setup':              CHANNEL_NAMES.adminCommands,
+    'backup-db':          CHANNEL_NAMES.adminCommands,
+    'profile':            CHANNEL_NAMES.botCommands,
+    'points':             CHANNEL_NAMES.botCommands,
+    'points-history':     CHANNEL_NAMES.botCommands,
+    'presence':           CHANNEL_NAMES.botCommands,
+    'delete-account':     CHANNEL_NAMES.botCommands,
 };
 
 async function assertChannel(interaction: ChatInputCommandInteraction): Promise<boolean> {
@@ -52,7 +46,7 @@ async function assertChannel(interaction: ChatInputCommandInteraction): Promise<
     const current = interaction.channel;
     if (current && 'name' in current && current.name === required) return true;
 
-    const target = interaction.guild?.channels.cache.find(c => c.name === required);
+    const target  = interaction.guild?.channels.cache.find(c => c.name === required);
     const mention = target ? `<#${target.id}>` : `#${required}`;
     await interaction.reply({ content: `Cette commande ne peut être utilisée que dans ${mention}.`, flags: MessageFlags.Ephemeral });
     return false;
@@ -71,29 +65,11 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
-const commands = [
-    register.command.toJSON(),
-    adminRegister.command.toJSON(),
-    setRole.command.toJSON(),
-    openSession.command.toJSON(),
-    closeSession.command.toJSON(),
-    presence.command.toJSON(),
-    scheduleSession.command.toJSON(),
-    createRendu.command.toJSON(),
-    profile.command.toJSON(),
-    points.command.toJSON(),
-    pointsHistory.command.toJSON(),
-    resetServer.command.toJSON(),
-    deleteAccount.command.toJSON(),
-    deleteUser.command.toJSON(),
-    listUsers.command.toJSON(),
-];
-
 client.on(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user?.tag}!`);
 
     const rest = new REST().setToken(process.env.DISCORD_TOKEN!);
-    await rest.put(Routes.applicationCommands(client.user!.id), { body: commands });
+    await rest.put(Routes.applicationCommands(client.user!.id), { body: commandsJSON });
     console.log('Slash commands registered.');
 
     for (const guild of client.guilds.cache.values()) {
@@ -101,7 +77,33 @@ client.on(Events.ClientReady, async () => {
         await ensureChannels(guild);
     }
 
+    await ensureRulesMessage(client);
     await restoreScheduledSessions(client);
+
+    // ─── Helper message in inscription channel ────────────────────────────────
+    for (const guild of client.guilds.cache.values()) {
+        const ch = guild.channels.cache.find(
+            c => c.name === CHANNEL_NAMES.register,
+        ) as TextChannel | undefined;
+        if (ch) {
+            await ch.send('👋 Pour vous inscrire sur le serveur, utilisez la commande `/inscription` dans ce channel.');
+        }
+    }
+
+    // ─── Reminder : configure Raider role permissions in Discord Integrations ──
+    for (const guild of client.guilds.cache.values()) {
+        const ch = guild.channels.cache.find(
+            c => c.name === CHANNEL_NAMES.adminCommands,
+        ) as TextChannel | undefined;
+        if (ch) {
+            await ch.send(
+                '⚙️ **Rappel configuration** — Les commandes utilisateurs suivantes sont **cachées par défaut**.\n' +
+                'Pour les rendre accessibles aux membres inscrits, va dans\n' +
+                '**Paramètres du serveur → Intégrations → [Bot] → [Commande]** et ajoute le rôle **Raider**.\n\n' +
+                'Commandes concernées : `/presence` `/profile` `/points` `/points-history` `/delete-account`',
+            );
+        }
+    }
 });
 
 // ─── Discord client error handler ────────────────────────────────────────────
@@ -126,71 +128,43 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
             if (!await assertChannel(interaction)) return;
+            // Each handler in commandMap is wrapped with withErrorHandling
+            const handler = commandMap.get(interaction.commandName);
+            if (handler) await handler(interaction);
 
-            if (interaction.commandName === 'register') {
-                await register.handleCommand(interaction);
-            } else if (interaction.commandName === 'admin-register') {
-                await adminRegister.handleCommand(interaction);
-            } else if (interaction.commandName === 'set-role') {
-                await setRole.handleCommand(interaction);
-            } else if (interaction.commandName === 'open-session') {
-                await openSession.handleCommand(interaction);
-            } else if (interaction.commandName === 'close-session') {
-                await closeSession.handleCommand(interaction);
-            } else if (interaction.commandName === 'presence') {
-                await presence.handleCommand(interaction);
-            } else if (interaction.commandName === 'schedule-session') {
-                await scheduleSession.handleCommand(interaction);
-            } else if (interaction.commandName === 'create-rendu') {
-                await createRendu.handleCommand(interaction);
-            } else if (interaction.commandName === 'profile') {
-                await profile.handleCommand(interaction);
-            } else if (interaction.commandName === 'points') {
-                await points.handleCommand(interaction);
-            } else if (interaction.commandName === 'points-history') {
-                await pointsHistory.handleCommand(interaction);
-            } else if (interaction.commandName === 'reset-server') {
-                await resetServer.handleCommand(interaction);
-            } else if (interaction.commandName === 'delete-account') {
-                await deleteAccount.handleCommand(interaction);
-            } else if (interaction.commandName === 'delete-user') {
-                await deleteUser.handleCommand(interaction);
-            } else if (interaction.commandName === 'list-users') {
-                await listUsers.handleCommand(interaction);
-            }
         } else if (interaction.isButton()) {
-            if (interaction.customId === 'register:esgi' || interaction.customId === 'register:external') {
-                await register.handleButton(interaction);
-            }
+            const handler = buttonHandlers.find(h => h.match(interaction.customId));
+            if (handler) await handler.handle(interaction);
+
         } else if (interaction.isStringSelectMenu()) {
-            if (interaction.customId.startsWith('register-select:')) {
-                await register.handleSelect(interaction);
-            }
+            const handler = selectHandlers.find(h => h.match(interaction.customId));
+            if (handler) await handler.handle(interaction);
+
         } else if (interaction.isModalSubmit()) {
-            if (interaction.customId.startsWith('register-modal:')) {
-                await register.handleModalSubmit(interaction);
-            }
+            const handler = modalHandlers.find(h => h.match(interaction.customId));
+            if (handler) await handler.handle(interaction);
         }
     } catch (err) {
         // 10062 = interaction token expired (harmless race at startup)
         // 40060 = interaction already acknowledged (harmless double-trigger)
         if (err instanceof DiscordAPIError && (err.code === 10062 || err.code === 40060)) return;
+        await reportError(client, err, `Interaction ${interaction.type}`);
+    }
+});
 
-        // Try to notify the user before reporting
-        try {
-            if (interaction.isChatInputCommand()) {
-                const msg = '❌ Une erreur est survenue. Les administrateurs ont été notifiés.';
-                if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
-                else if (interaction.deferred) await interaction.editReply(msg);
-            }
-        } catch { /* interaction may have expired */ }
-
-        await reportError(client, err, `Commande /${interaction.isChatInputCommand() ? interaction.commandName : interaction.type}`);
+client.on(Events.GuildMemberAdd, async (member) => {
+    try {
+        await member.guild.roles.fetch();
+        const tempRole = member.guild.roles.cache.find(r => r.name === TEMP_ROLE_NAME);
+        if (tempRole) await member.roles.add(tempRole);
+    } catch (err) {
+        await reportError(client, err, 'GuildMemberAdd');
     }
 });
 
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
     try {
+        await handleRulesReaction(reaction, user);
         await handleProofReaction(reaction, user);
     } catch (err) {
         await reportError(client, err, 'MessageReactionAdd');

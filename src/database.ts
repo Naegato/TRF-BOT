@@ -56,9 +56,29 @@ sqlite.exec(`
         track     TEXT,
         intake    TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS presencePending (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        discordId   TEXT NOT NULL,
+        sessionId   INTEGER NOT NULL REFERENCES sessions(id),
+        guildId     TEXT NOT NULL,
+        adminMsgId  TEXT,
+        requestedAt INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS presencePending_session_discordId_unique
+        ON presencePending(sessionId, discordId);
+
+    CREATE TABLE IF NOT EXISTS config (
+        guildId TEXT NOT NULL,
+        key     TEXT NOT NULL,
+        value   TEXT NOT NULL,
+        PRIMARY KEY (guildId, key)
+    );
 `);
 
 export const db = drizzle(sqlite, { schema });
+export { sqlite };
 
 export function connectDatabase(): void {
     console.log(`Connected to SQLite database at ${DB_PATH}.`);

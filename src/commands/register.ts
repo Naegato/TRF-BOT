@@ -21,7 +21,7 @@ import { buildNickname } from '../utils/nickname';
 import { applyRoles } from '../utils/applyRoles';
 
 export const command = new SlashCommandBuilder()
-    .setName('register')
+    .setName('inscription')
     .setDescription("S'inscrire sur le serveur");
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {

@@ -1,9 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { asc } from 'drizzle-orm';
 import { db } from '../database';
 import { users } from '../schema';
 import { buildNickname } from '../utils/nickname';
-import { isAdminOrOwner } from '../utils/permissions';
+import { requirePermission } from '../utils/permissions';
 
 const GROUP_ORDER = ['manager', 'deputy', 'esgi', 'external'] as const;
 
@@ -16,14 +16,10 @@ const GROUP_LABEL: Record<string, string> = {
 
 export const command = new SlashCommandBuilder()
     .setName('list-users')
-    .setDescription('Lister tous les utilisateurs inscrits (gérants et adjoints uniquement)');
+    .setDescription('Lister tous les utilisateurs inscrits (gérants et adjoints uniquement)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    if (!await isAdminOrOwner(interaction)) {
-        await interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", flags: MessageFlags.Ephemeral });
-        return;
-    }
-
+async function handleCommandImpl(interaction: ChatInputCommandInteraction) {
     const allUsers = db.select().from(users).orderBy(asc(users.lastName), asc(users.firstName)).all();
 
     if (allUsers.length === 0) {
@@ -73,3 +69,5 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }
+
+export const handleCommand = requirePermission('admin', handleCommandImpl);

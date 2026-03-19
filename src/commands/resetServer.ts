@@ -1,7 +1,7 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction , MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { ALL_MANAGED_ROLE_NAMES } from '../utils/ensureRoles';
 import { CHANNEL_NAMES } from '../utils/ensureChannels';
-import { isManagerOrOwner } from '../utils/permissions';
+import { requirePermission } from '../utils/permissions';
 
 const CONFIRMATION_PHRASE = 'RESET SERVER';
 
@@ -11,14 +11,10 @@ export const command = new SlashCommandBuilder()
     .addStringOption(opt =>
         opt.setName('confirmation')
             .setDescription(`Tapez "${CONFIRMATION_PHRASE}" pour confirmer`)
-            .setRequired(true));
+            .setRequired(true))
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    if (!await isManagerOrOwner(interaction)) {
-        await interaction.reply({ content: 'Seul le **Gérant** peut utiliser cette commande.', flags: MessageFlags.Ephemeral });
-        return;
-    }
-
+async function handleCommandImpl(interaction: ChatInputCommandInteraction) {
     const confirmation = interaction.options.getString('confirmation', true);
     if (confirmation !== CONFIRMATION_PHRASE) {
         await interaction.reply({
@@ -67,3 +63,5 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         (results.skipped > 0 ? `\n• **${results.skipped}** surnom(s) non réinitialisable(s) (propriétaire ou rôle supérieur)` : ''),
     );
 }
+
+export const handleCommand = requirePermission('manager', handleCommandImpl);

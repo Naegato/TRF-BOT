@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../database';
 import { users } from '../schema';
@@ -10,7 +10,8 @@ export const command = new SlashCommandBuilder()
     .addStringOption(opt =>
         opt.setName('confirmation')
             .setDescription('Tapez "SUPPRIMER" pour confirmer')
-            .setRequired(true));
+            .setRequired(true))
+    .setDefaultMemberPermissions(0n);
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const user = db.select().from(users).where(eq(users.discordId, interaction.user.id)).get();

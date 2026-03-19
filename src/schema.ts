@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
     discordId:    text('discordId').primaryKey(),
@@ -32,6 +32,15 @@ export const points = sqliteTable('points', {
     createdAt: integer('createdAt', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
 });
 
+export const presencePending = sqliteTable('presencePending', {
+    id:          integer('id').primaryKey({ autoIncrement: true }),
+    discordId:   text('discordId').notNull(),
+    sessionId:   integer('sessionId').notNull().references(() => sessions.id),
+    guildId:     text('guildId').notNull(),
+    adminMsgId:  text('adminMsgId'),
+    requestedAt: integer('requestedAt', { mode: 'timestamp_ms' }).notNull().$defaultFn(() => new Date()),
+});
+
 export const rendus = sqliteTable('rendus', {
     id:        integer('id').primaryKey({ autoIncrement: true }),
     guildId:   text('guildId').notNull(),
@@ -41,3 +50,11 @@ export const rendus = sqliteTable('rendus', {
     track:     text('track', { enum: ['alternating', 'initial'] as const }),
     intake:    text('intake', { enum: ['january', 'september'] as const }),
 });
+
+export const config = sqliteTable('config', {
+    guildId: text('guildId').notNull(),
+    key:     text('key').notNull(),
+    value:   text('value').notNull(),
+}, (t) => [
+    primaryKey({ columns: [t.guildId, t.key] }),
+]);

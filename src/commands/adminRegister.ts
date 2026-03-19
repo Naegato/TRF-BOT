@@ -1,11 +1,11 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../database';
 import { users } from '../schema';
 import type { Role, Track, Intake } from '../models/User';
 import { buildNickname } from '../utils/nickname';
 import { applyRoles } from '../utils/applyRoles';
-import { isAdminOrOwner } from '../utils/permissions';
+import { requirePermission } from '../utils/permissions';
 
 export const command = new SlashCommandBuilder()
     .setName('admin-register')
@@ -46,14 +46,10 @@ export const command = new SlashCommandBuilder()
             .addChoices(
                 { name: 'Janvier',   value: 'january' },
                 { name: 'Septembre', value: 'september' },
-            ));
+            ))
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    if (!await isAdminOrOwner(interaction)) {
-        await interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", flags: MessageFlags.Ephemeral });
-        return;
-    }
-
+async function handleCommandImpl(interaction: ChatInputCommandInteraction) {
     const target    = interaction.options.getUser('user', true);
     const firstName = interaction.options.getString('firstname', true).trim();
     const lastName  = interaction.options.getString('lastname', true).trim();
@@ -94,3 +90,5 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const note = renamed ? '' : `\n⚠️ Le surnom n'a pas pu être défini automatiquement. À définir manuellement : \`${nickname}\``;
     await interaction.editReply(`<@${target.id}> a été inscrit(e) en tant que **${nickname}**.${note}`);
 }
+
+export const handleCommand = requirePermission('admin', handleCommandImpl);

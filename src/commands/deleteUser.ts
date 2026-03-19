@@ -1,22 +1,18 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../database';
 import { users } from '../schema';
 import { ALL_MANAGED_ROLE_NAMES } from '../utils/ensureRoles';
-import { isAdminOrOwner } from '../utils/permissions';
+import { requirePermission } from '../utils/permissions';
 
 export const command = new SlashCommandBuilder()
     .setName('delete-user')
     .setDescription("Supprimer le compte d'un utilisateur (gérants et adjoints uniquement)")
     .addUserOption(opt =>
-        opt.setName('user').setDescription('Utilisateur à supprimer').setRequired(true));
+        opt.setName('user').setDescription('Utilisateur à supprimer').setRequired(true))
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    if (!await isAdminOrOwner(interaction)) {
-        await interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", flags: MessageFlags.Ephemeral });
-        return;
-    }
-
+async function handleCommandImpl(interaction: ChatInputCommandInteraction) {
     const target = interaction.options.getUser('user', true);
 
     const targetUser = db.select().from(users).where(eq(users.discordId, target.id)).get();
@@ -38,3 +34,5 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply(`Le compte de <@${target.id}> a été supprimé.`);
 }
+
+export const handleCommand = requirePermission('admin', handleCommandImpl);

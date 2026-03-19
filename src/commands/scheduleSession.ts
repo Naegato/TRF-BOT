@@ -1,8 +1,8 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { db } from '../database';
 import { sessions } from '../schema';
 import { scheduleSessionTimers } from '../utils/sessionScheduler';
-import { isAdminOrOwner } from '../utils/permissions';
+import { requirePermission } from '../utils/permissions';
 
 function parseParisDateTime(dateStr: string, timeStr: string): Date | null {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
@@ -36,14 +36,10 @@ export const command = new SlashCommandBuilder()
     .addStringOption(opt =>
         opt.setName('start').setDescription('Heure de début HH:MM (ex: 14:00) — heure de Paris').setRequired(true))
     .addStringOption(opt =>
-        opt.setName('end').setDescription('Heure de fin HH:MM (ex: 16:00) — heure de Paris').setRequired(true));
+        opt.setName('end').setDescription('Heure de fin HH:MM (ex: 16:00) — heure de Paris').setRequired(true))
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    if (!await isAdminOrOwner(interaction)) {
-        await interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", flags: MessageFlags.Ephemeral });
-        return;
-    }
-
+async function handleCommandImpl(interaction: ChatInputCommandInteraction) {
     const dateStr  = interaction.options.getString('date', true).trim();
     const startStr = interaction.options.getString('start', true).trim();
     const endStr   = interaction.options.getString('end', true).trim();
@@ -81,3 +77,5 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
         flags: MessageFlags.Ephemeral,
     });
 }
+
+export const handleCommand = requirePermission('admin', handleCommandImpl);

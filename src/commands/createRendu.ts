@@ -5,13 +5,17 @@ import {
     ChannelType,
     TextChannel,
     MessageFlags,
+    PermissionFlagsBits,
 } from 'discord.js';
-import { eq, ne, and, or, inArray, gt, isNotNull, gte, asc } from 'drizzle-orm';
-import { db } from '../database';
-import { users, sessions, points, rendus } from '../schema';
 import { CHANNEL_NAMES } from '../utils/ensureChannels';
-import { lastRenduForUser, MAX_POINTS } from '../utils/rendus';
-import { isAdminOrOwner } from '../utils/permissions';
+import { MAX_POINTS } from '../utils/rendus';
+import { requirePermission } from '../utils/permissions';
+import {
+    createRenduRecord,
+    fetchUsersForRendu,
+    computeUserPeriodStats,
+    fetchSessionsForPeriod,
+} from '../services/renduService';
 import type { Track, Intake } from '../models/User';
 
 // ─── Display helpers ─────────────────────────────────────────────────────────
@@ -64,96 +68,32 @@ export const command = new SlashCommandBuilder()
             .addChoices(
                 { name: 'Janvier',   value: 'january' },
                 { name: 'Septembre', value: 'september' },
-            ));
+            ))
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
-export async function handleCommand(interaction: ChatInputCommandInteraction) {
-    if (!await isAdminOrOwner(interaction)) {
-        await interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", flags: MessageFlags.Ephemeral });
-        return;
-    }
-
+async function handleCommandImpl(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const filterYear   = interaction.options.getInteger('year') as 1|2|3|4|5 | null;
+    const filterYear   = interaction.options.getInteger('year') as 1 | 2 | 3 | 4 | 5 | null;
     const filterTrack  = interaction.options.getString('track') as Track | null;
     const filterIntake = interaction.options.getString('intake') as Intake | null;
 
+    const filters = { year: filterYear, track: filterTrack, intake: filterIntake };
+
     // ── Save rendu to DB (becomes the new period boundary) ────────────────────
-    const rendu = db.insert(rendus).values({
-        guildId:   interaction.guildId!,
-        createdBy: interaction.user.id,
-        ...(filterYear   && { year: filterYear }),
-        ...(filterTrack  && { track: filterTrack }),
-        ...(filterIntake && { intake: filterIntake }),
-    }).returning().get()!;
+    const rendu = createRenduRecord(interaction.guildId!, interaction.user.id, filters);
 
-    // ── Fetch users matching the filter (externals always excluded) ───────────
-    const hasFilters = filterYear || filterTrack || filterIntake;
-    const groupConditions = [
-        ne(users.role, 'external' as const),
-        ...(filterYear   ? [eq(users.year,   filterYear)]   : []),
-        ...(filterTrack  ? [eq(users.track,  filterTrack)]  : []),
-        ...(filterIntake ? [eq(users.intake, filterIntake)] : []),
-    ];
+    // ── Fetch users matching the filter ───────────────────────────────────────
+    const userList = fetchUsersForRendu(filters);
 
-    const userFilter = hasFilters
-        ? or(and(...groupConditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]])  , inArray(users.role, ['manager', 'deputy']))
-        : ne(users.role, 'external' as const);
+    // ── Compute period stats per user ─────────────────────────────────────────
+    const periodByUser = computeUserPeriodStats(userList, interaction.guildId!, rendu.id);
 
-    const userList = db.select().from(users).where(userFilter).orderBy(asc(users.lastName), asc(users.firstName)).all();
-
-    // ── For each user, find their period start (last rendu before this one) ───
-    type UserPeriod = {
-        proofPoints:       number;
-        sessionAttendance: Map<string, boolean>;
-        totalRaw:          number;
-        totalCapped:       number;
-        max:               number;
-        since:             Date | null;
-    };
-
-    const periodByUser = new Map<string, UserPeriod>();
-
-    for (const user of userList) {
-        const prev = lastRenduForUser(user, interaction.guildId!);
-        // Exclude the rendu we just created (it's the boundary, not the start of this period)
-        const prevActual = prev && prev.id !== rendu.id ? prev : null;
-        const since = prevActual?.createdAt ?? null;
-
-        const userPoints = since
-            ? db.select().from(points).where(and(eq(points.discordId, user.discordId), gt(points.createdAt, since))).all()
-            : db.select().from(points).where(eq(points.discordId, user.discordId)).all();
-
-        const proofPoints = userPoints
-            .filter(p => p.type === 'proof')
-            .reduce((sum, p) => sum + p.amount, 0);
-
-        const sessionIds = userPoints
-            .filter(p => p.type === 'session')
-            .map(p => String(p.sessionId));
-
-        const totalRaw = userPoints.reduce((sum, p) => sum + p.amount, 0);
-        const max      = MAX_POINTS[user.role];
-
-        periodByUser.set(user.discordId, {
-            proofPoints,
-            sessionAttendance: new Map(sessionIds.map(id => [id, true])),
-            totalRaw,
-            totalCapped: Math.min(totalRaw, max),
-            max,
-            since,
-        });
-    }
-
-    // ── Fetch sessions in the widest period (from earliest user's last rendu) ─
+    // ── Fetch sessions in the widest period ───────────────────────────────────
     const allSinces = [...periodByUser.values()].map(p => p.since?.getTime() ?? 0);
     const minSince  = new Date(Math.min(...allSinces));
 
-    const sessionList = db.select().from(sessions)
-        .where(and(isNotNull(sessions.openedAt), gte(sessions.openedAt, minSince)))
-        .orderBy(asc(sessions.openedAt))
-        .all();
-
+    const sessionList = fetchSessionsForPeriod(minSince);
     const sessionIds    = sessionList.map(s => String(s.id));
     const sessionLabels = sessionList.map(s =>
         s.openedAt!.toLocaleDateString('fr-FR', {
@@ -221,3 +161,5 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply(`Rapport envoyé dans <#${renduChannel.id}>. La période a été réinitialisée pour le groupe ciblé.`);
 }
+
+export const handleCommand = requirePermission('admin', handleCommandImpl);

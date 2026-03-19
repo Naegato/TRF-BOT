@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { eq, desc, sql } from 'drizzle-orm';
 import { db } from '../database';
 import { users, points } from '../schema';
@@ -9,7 +9,8 @@ export const command = new SlashCommandBuilder()
     .setName('points-history')
     .setDescription('Voir votre historique de points')
     .addIntegerOption(opt =>
-        opt.setName('page').setDescription('Numéro de page (défaut : 1)').setMinValue(1));
+        opt.setName('page').setDescription('Numéro de page (défaut : 1)').setMinValue(1))
+    .setDefaultMemberPermissions(0n);
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const user = db.select().from(users).where(eq(users.discordId, interaction.user.id)).get();

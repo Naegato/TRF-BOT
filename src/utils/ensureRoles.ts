@@ -30,6 +30,12 @@ export const INTAKE_ROLE_SPECS: Record<Intake, RoleSpec> = {
     september: { name: 'Septembre', color: 0xFFA726 }, // amber
 };
 
+export const TEMP_ROLE_SPEC: RoleSpec   = { name: 'Temp',   color: 0x95A5A6 }; // grey
+export const RAIDER_ROLE_SPEC: RoleSpec = { name: 'Raider', color: 0xE74C3C }; // red
+
+export const TEMP_ROLE_NAME   = TEMP_ROLE_SPEC.name;
+export const RAIDER_ROLE_NAME = RAIDER_ROLE_SPEC.name;
+
 // ─── Flat name maps (used by applyRoles, ensureChannels, etc.) ────────────────
 
 export const USER_ROLE_NAMES  = Object.fromEntries(Object.entries(USER_ROLE_SPECS) .map(([k, v]) => [k, v.name])) as Record<Role, string>;
@@ -42,11 +48,14 @@ export const ALL_MANAGED_ROLE_NAMES: string[] = [
     ...Object.values(YEAR_ROLE_NAMES),
     ...Object.values(TRACK_ROLE_NAMES),
     ...Object.values(INTAKE_ROLE_NAMES),
+    RAIDER_ROLE_NAME,
 ];
 
 // ─── Ensure roles exist with correct name and color ──────────────────────────
 
 const ALL_SPECS: RoleSpec[] = [
+    TEMP_ROLE_SPEC,
+    RAIDER_ROLE_SPEC,
     ...Object.values(USER_ROLE_SPECS),
     ...Object.values(YEAR_ROLE_SPECS),
     ...Object.values(TRACK_ROLE_SPECS),

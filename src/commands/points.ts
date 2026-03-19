@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { eq, and, gt, sql } from 'drizzle-orm';
 import { db } from '../database';
 import { users, points } from '../schema';
@@ -6,7 +6,8 @@ import { currentPeriodPoints } from '../utils/rendus';
 
 export const command = new SlashCommandBuilder()
     .setName('points')
-    .setDescription('Voir vos points pour la période en cours');
+    .setDescription('Voir vos points pour la période en cours')
+    .setDefaultMemberPermissions(0n);
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
     const user = db.select().from(users).where(eq(users.discordId, interaction.user.id)).get();

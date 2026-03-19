@@ -6,6 +6,7 @@ import {
     YEAR_ROLE_NAMES,
     TRACK_ROLE_NAMES,
     INTAKE_ROLE_NAMES,
+    RAIDER_ROLE_NAME,
 } from './ensureRoles';
 
 export async function applyRoles(member: GuildMember, user: IUser): Promise<void> {
@@ -22,7 +23,7 @@ export async function applyRoles(member: GuildMember, user: IUser): Promise<void
     }
 
     // Build the list of roles to add
-    const toAddNames: string[] = [USER_ROLE_NAMES[user.role]];
+    const toAddNames: string[] = [USER_ROLE_NAMES[user.role], RAIDER_ROLE_NAME];
 
     if (user.role !== 'external' && user.year && user.track && user.intake) {
         toAddNames.push(YEAR_ROLE_NAMES[user.year]);
