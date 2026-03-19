@@ -7,8 +7,7 @@ import {
     ButtonStyle,
     EmbedBuilder,
     MessageFlags,
-    TextChannel,
-    PermissionFlagsBits,
+    TextChannel
 } from 'discord.js';
 import { CHANNEL_NAMES } from '../utils/ensureChannels';
 import {
